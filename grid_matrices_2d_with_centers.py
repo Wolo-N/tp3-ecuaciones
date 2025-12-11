@@ -89,17 +89,20 @@ H, W = np.meshgrid(h, w)          # default 'xy': W->xi, H->eta
 # (xi, eta) rows
 natural_coords = np.column_stack((W.ravel(), H.ravel()))
 
-# -------- Control points (example) --------
+# -------- Control points for symmetric tapered fin --------
+# Fin shape: flat base at bottom (Y=-25mm), tapered tip at top (Y=+25mm)
+# Symmetric about X=0
+# Base width: 50mm, Tip width: 30mm, Height: 50mm
 ctrl = np.array([
-    [-0.025, -0.025],    # N1  (-1,-1)
-    [ 0.025, -0.015],    # N2  ( 1,-1)
-    [ 0.025,  0.015],    # N3  ( 1, 1)
-    [-0.025,  0.025],    # N4  (-1, 1)
-    [ 0.0, -0.025],    # N5  ( 0,-1)
-    [ 0.025,  0.0],    # N6  ( 1, 0)
-    [ 0.0,  0.025],    # N7  ( 0, 1)
-    [-0.025,  0.0],    # N8  (-1, 0)
-    [ 0.0,  0.0]     # N9  ( 0, 0)
+    [-0.025, -0.025],    # N1  (-1,-1) bottom-left corner
+    [ 0.025, -0.025],    # N2  ( 1,-1) bottom-right corner
+    [ 0.015,  0.025],    # N3  ( 1, 1) top-right corner (tapered)
+    [-0.015,  0.025],    # N4  (-1, 1) top-left corner (tapered)
+    [ 0.0,   -0.025],    # N5  ( 0,-1) bottom-center
+    [ 0.020,  0.0],      # N6  ( 1, 0) right-center (avg of 0.025 and 0.015)
+    [ 0.0,    0.025],    # N7  ( 0, 1) top-center
+    [-0.020,  0.0],      # N8  (-1, 0) left-center (avg of -0.025 and -0.015)
+    [ 0.0,    0.0]       # N9  ( 0, 0) center
 ])
 
 # -------- Coordinate transformation --------

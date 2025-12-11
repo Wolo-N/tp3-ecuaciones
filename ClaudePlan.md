@@ -23,7 +23,7 @@ Side view (2D grid = ONE FIN):        Top view (full heat sink):
 ## Existing Code
 - `grid_matrices_2d_with_centers.py`: 2D grid, 36 CVs, areas, neighbors
 - `fin_fvm_1d.py`: 1D FVM reference (boundary conditions, matrix assembly)
-
+STICK TO THIS CODE. DO NOT DEVIATE IN STYLE OR SIMPLICITY.
 ---
 
 ## Part 1: Geometry (`heat_sink_geometry.py`)
