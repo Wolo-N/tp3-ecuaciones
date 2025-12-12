@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import matplotlib.patches as mpatches
 
+RUN_DEMO = __name__ == "__main__"
+
 # ---------------- Shape functions ----------------
 def q9_shape_functions(xi, eta):
     # 1D quadratic Lagrange polynomials
@@ -93,17 +95,26 @@ natural_coords = np.column_stack((W.ravel(), H.ravel()))
 # Fin shape: flat base at bottom (Y=-25mm), tapered tip at top (Y=+25mm)
 # Symmetric about X=0
 # Base width: 50mm, Tip width: 30mm, Height: 50mm
+# ---- Fin geometry (rectangular) ----
+fin_thickness = 0.002   # 2 mm (will be optimized later)
+fin_height    = 0.025   # 25 mm max allowed height
+
+half_t = fin_thickness / 2.0
+
+# Q9 control points for a perfect rectangle:
+# x-direction = thickness, y-direction = height
 ctrl = np.array([
-    [-0.025, -0.025],    # N1  (-1,-1) bottom-left corner
-    [ 0.025, -0.025],    # N2  ( 1,-1) bottom-right corner
-    [ 0.015,  0.025],    # N3  ( 1, 1) top-right corner (tapered)
-    [-0.015,  0.025],    # N4  (-1, 1) top-left corner (tapered)
-    [ 0.0,   -0.025],    # N5  ( 0,-1) bottom-center
-    [ 0.020,  0.0],      # N6  ( 1, 0) right-center (avg of 0.025 and 0.015)
-    [ 0.0,    0.025],    # N7  ( 0, 1) top-center
-    [-0.020,  0.0],      # N8  (-1, 0) left-center (avg of -0.025 and -0.015)
-    [ 0.0,    0.0]       # N9  ( 0, 0) center
+    [-half_t,      0.0],         # N1: bottom-left
+    [ half_t,      0.0],         # N2: bottom-right
+    [ half_t, fin_height],       # N3: top-right
+    [-half_t, fin_height],       # N4: top-left
+    [ 0.0,         0.0],         # N5: bottom-center
+    [ half_t, fin_height/2.0],   # N6: mid-right
+    [ 0.0,      fin_height],     # N7: top-center
+    [-half_t, fin_height/2.0],   # N8: mid-left
+    [ 0.0,    fin_height/2.0]    # N9: center
 ])
+
 
 # -------- Coordinate transformation --------
 structural_coords = q9_interpolate_points(ctrl, natural_coords)
@@ -143,8 +154,9 @@ def get_center_nodes(nHeight, nWidth):
 
 center_nodes, center_nodes_grid = get_center_nodes(nHeight, nWidth)
 
-print(f"Center nodes: {center_nodes}")
-print(f"Number of center nodes: {len(center_nodes)}")
+if RUN_DEMO:
+    print(f"Center nodes: {center_nodes}")
+    print(f"Number of center nodes: {len(center_nodes)}")
 
 # -------- Define blocks (3x3 neighborhoods) around each center node --------
 def get_block_nodes(center_idx, nWidth, nHeight):
@@ -173,10 +185,11 @@ blocks = {}
 for center in center_nodes:
     blocks[center] = get_block_nodes(center, nWidth, nHeight)
 
-# Print example blocks
-print(f"\nExample blocks:")
-print(f"Block around center node 0: {blocks[0]}")
-print(f"Block around center node 50: {blocks[50]}")
+if RUN_DEMO:
+    # Print example blocks
+    print(f"\nExample blocks:")
+    print(f"Block around center node 0: {blocks[0]}")
+    print(f"Block around center node 50: {blocks[50]}")
 
 # -------- Build neighbor connectivity for center nodes --------
 def get_center_neighbors_from_grid(center_idx, center_nodes_grid, nWidth):
@@ -205,23 +218,23 @@ def get_center_neighbors_from_grid(center_idx, center_nodes_grid, nWidth):
     # Initialize neighbors: [Center, Left, Right, Up, Down]
     neighbors = [center_idx, None, None, None, None]
 
-    # Left neighbor: row - 2, same col (because of meshgrid layout)
-    left_key = (center_row - 2, center_col)
+    # Left neighbor: same row, col - 2
+    left_key = (center_row, center_col - 2)
     if left_key in center_nodes_grid:
         neighbors[1] = center_nodes_grid[left_key]
 
-    # Right neighbor: row + 2, same col (because of meshgrid layout)
-    right_key = (center_row + 2, center_col)
+    # Right neighbor: same row, col + 2
+    right_key = (center_row, center_col + 2)
     if right_key in center_nodes_grid:
         neighbors[2] = center_nodes_grid[right_key]
 
-    # Up neighbor: same row, col + 2 (because of meshgrid layout)
-    up_key = (center_row, center_col + 2)
+    # Up neighbor: row + 2 (higher y), same col
+    up_key = (center_row + 2, center_col)
     if up_key in center_nodes_grid:
         neighbors[3] = center_nodes_grid[up_key]
 
-    # Down neighbor: same row, col - 2 (because of meshgrid layout)
-    down_key = (center_row, center_col - 2)
+    # Down neighbor: row - 2 (lower y), same col
+    down_key = (center_row - 2, center_col)
     if down_key in center_nodes_grid:
         neighbors[4] = center_nodes_grid[down_key]
 
@@ -239,17 +252,18 @@ for i, center in enumerate(center_nodes):
 center_node_to_idx = {node: i for i, node in enumerate(center_nodes)}
 neighbours_dict = {node: neighbours[i] for i, node in enumerate(center_nodes)}
 
-print(f"\nNeighbor connectivity structure created:")
-print(f"  - neighbours array shape: {neighbours.shape}")
-print(f"  - Format: [Center, Left, Right, Up, Down]")
-print(f"  - Access by center node list index: neighbours[i]")
-print(f"  - Access by global node index: neighbours_dict[global_idx]")
+if RUN_DEMO:
+    print(f"\nNeighbor connectivity structure created:")
+    print(f"  - neighbours array shape: {neighbours.shape}")
+    print(f"  - Format: [Center, Left, Right, Up, Down]")
+    print(f"  - Access by center node list index: neighbours[i]")
+    print(f"  - Access by global node index: neighbours_dict[global_idx]")
 
-# Print example neighbors
-print(f"\nExample neighbors:")
-print(f"  Center node 0 (list index {center_node_to_idx[0]}): {neighbours_dict[0]}")
-print(f"  Center node 66 (list index {center_node_to_idx[66]}): {neighbours_dict[66]}")
-print(f"  Center node 120 (list index {center_node_to_idx[120]}): {neighbours_dict[120]}")
+    # Print example neighbors
+    print(f"\nExample neighbors:")
+    print(f"  Center node 0 (list index {center_node_to_idx[0]}): {neighbours_dict[0]}")
+    print(f"  Center node 66 (list index {center_node_to_idx[66]}): {neighbours_dict[66]}")
+    print(f"  Center node 120 (list index {center_node_to_idx[120]}): {neighbours_dict[120]}")
 
 # -------- Compute Areas using Heron's Formula --------
 def heron_triangle_area(p1, p2, p3):
@@ -275,7 +289,10 @@ def heron_triangle_area(p1, p2, p3):
     s = (a + b + c) / 2.0
 
     # Heron's formula
-    area = sqrt(s * (s - a) * (s - b) * (s - c))
+    val = s * (s - a) * (s - b) * (s - c)
+    if val <= 0:
+        return 0.0  # Degenerate or collinear triangle; no area
+    area = sqrt(val)
 
     return area
 
@@ -372,51 +389,159 @@ for i, center in enumerate(center_nodes):
     areas[i] = compute_block_area(center, block, structural_coords)
     areas_dict[center] = areas[i]
 
-print(f"\nAreas computed using Heron's formula:")
-print(f"  - areas array shape: {areas.shape}")
-print(f"  - Total area sum: {areas.sum():.6e} m² ({areas.sum() * 1e6:.2f} mm²)")
-print(f"\nExample areas:")
-print(f"  Center node 0 area: {areas_dict[0]:.6e} m² ({areas_dict[0] * 1e6:.2f} mm²)")
-print(f"  Center node 66 area: {areas_dict[66]:.6e} m² ({areas_dict[66] * 1e6:.2f} mm²)")
-print(f"  Center node 120 area: {areas_dict[120]:.6e} m² ({areas_dict[120] * 1e6:.2f} mm²)")
+if RUN_DEMO:
+    print(f"\nAreas computed using Heron's formula:")
+    print(f"  - areas array shape: {areas.shape}")
+    print(f"  - Total area sum: {areas.sum():.6e} m² ({areas.sum() * 1e6:.2f} mm²)")
+    print(f"\nExample areas:")
+    print(f"  Center node 0 area: {areas_dict[0]:.6e} m² ({areas_dict[0] * 1e6:.2f} mm²)")
+    print(f"  Center node 66 area: {areas_dict[66]:.6e} m² ({areas_dict[66] * 1e6:.2f} mm²)")
+    print(f"  Center node 120 area: {areas_dict[120]:.6e} m² ({areas_dict[120] * 1e6:.2f} mm²)")
 
 # -------- Compute Volumes --------
 # For 2D grid representing 3D object: Volume = Area × Thickness
 # Heat sink base thickness: 1mm (0.001 m)
-thickness = 0.001  # meters (1mm base plate thickness)
+# ---- Compute the 3D volumes ----
+# 2D grid = (thickness × height); extrude into page by fin_length
+fin_length = 0.050   # 50 mm processor footprint
 
-volumes = areas * thickness
+volumes = areas * fin_length
+
+volumes_dict = {center_nodes[i]: volumes[i] for i in range(len(center_nodes))}
+
 volumes_dict = {}
 
 for i, center in enumerate(center_nodes):
     volumes_dict[center] = volumes[i]
 
-print(f"\nVolumes computed (Area × Thickness):")
-print(f"  - Thickness used: {thickness * 1000:.1f} mm ({thickness:.6f} m)")
-print(f"  - volumes array shape: {volumes.shape}")
-print(f"  - Total volume sum: {volumes.sum():.6e} m³ ({volumes.sum() * 1e9:.2f} mm³)")
-print(f"\nExample volumes:")
-print(f"  Center node 0 volume: {volumes_dict[0]:.6e} m³ ({volumes_dict[0] * 1e9:.4f} mm³)")
-print(f"  Center node 66 volume: {volumes_dict[66]:.6e} m³ ({volumes_dict[66] * 1e9:.4f} mm³)")
-print(f"  Center node 120 volume: {volumes_dict[120]:.6e} m³ ({volumes_dict[120] * 1e9:.4f} mm³)")
+if RUN_DEMO:
+    print("\nVolumes computed (Area x Thickness):")
+    print(f"  - Thickness used: {fin_length * 1000:.1f} mm ({fin_length:.6f} m)")
+    print(f"  - volumes array shape: {volumes.shape}")
+    print(f"  - Total volume sum: {volumes.sum():.6e} m^3 ({volumes.sum() * 1e9:.2f} mm^3)")
+    print("\nExample volumes:")
+    print(f"  Center node 0 volume: {volumes_dict[0]:.6e} m^3 ({volumes_dict[0] * 1e9:.4f} mm^3)")
+    print(f"  Center node 66 volume: {volumes_dict[66]:.6e} m^3 ({volumes_dict[66] * 1e9:.4f} mm^3)")
+    print(f"  Center node 120 volume: {volumes_dict[120]:.6e} m^3 ({volumes_dict[120] * 1e9:.4f} mm^3)")
+
+# -----------------------------------------------------------
+# 1) CENTER-TO-CENTER DISTANCES d_ij
+# -----------------------------------------------------------
+center_distances = {}   # key: (i, j) using GLOBAL center node ids
+
+for c_idx, c in enumerate(center_nodes):
+    cx, cy = structural_coords[c]
+    for neigh in neighbours_dict[c]:
+        if neigh is None or neigh == c:
+            continue
+        nx, ny = structural_coords[neigh]
+        d = np.linalg.norm([nx - cx, ny - cy])
+        center_distances[(c, neigh)] = d
+if RUN_DEMO:
+    print(f"\nCenter-to-center distances computed:")
+    print(f"  - Total distances computed: {len(center_distances)}")
+
+# -----------------------------------------------------------
+# 2) FACE LENGTHS AND FACE AREAS
+# -----------------------------------------------------------
+# Each control volume has a block (list of 8 surrounding node ids)
+# We find shared edges between blocks.
+
+face_lengths = {}   # 2D length of face between CVs (meters)
+face_areas   = {}   # 3D face area = face_length * fin_length
+
+for c_idx, c in enumerate(center_nodes):
+    block_c = blocks[c]  # nodes surrounding CV c
+    
+    for neigh in neighbours_dict[c]:
+        if neigh is None or neigh == c:
+            continue
+        
+        block_n = blocks[neigh]
+        
+        # Find shared nodes between block polygons
+        shared = list(set(block_c).intersection(set(block_n)))
+        L = 0.0
+
+        if len(shared) >= 2:
+            # Choose the longest edge among the shared nodes (handles 3-node overlaps cleanly)
+            max_len = 0.0
+            for i in range(len(shared)):
+                for j in range(i + 1, len(shared)):
+                    p1 = structural_coords[shared[i]]
+                    p2 = structural_coords[shared[j]]
+                    candidate = np.linalg.norm(p2 - p1)
+                    if candidate > max_len:
+                        max_len = candidate
+            L = max_len
+        
+        face_lengths[(c, neigh)] = L
+        face_areas[(c, neigh)]   = L * fin_length   # <- 3D face area
+if RUN_DEMO:
+    print(f"\nFace lengths and areas computed:")
+    print(f"  - Total face lengths computed: {len(face_lengths)}")
+    print(f"  - Total face areas computed: {len(face_areas)}")
+
+# -----------------------------------------------------------
+# 3) BOUNDARY SURFACE AREAS (FOR CONVECTION)
+# -----------------------------------------------------------
+boundary_areas = {}  # exposed area for each boundary CV
+
+for c_idx, c in enumerate(center_nodes):
+    A_surf = 0.0   # accumulate surface area
+    
+    for direction_idx, neigh in enumerate(neighbours_dict[c]):
+        if neigh is None:
+            # boundary face: find the corresponding face length
+            block_c = blocks[c]
+            
+            # Determine boundary edge by selecting nodes on the outermost coordinate
+            # Left/Right: use x (axis 0). Up/Down: use y (axis 1).
+            axis = 0 if direction_idx in (1, 2) else 1
+            coords_block = structural_coords[block_c][:, axis]
+            
+            if direction_idx in (1, 4):  # left or down -> min side
+                edge_coord = np.min(coords_block)
+            else:  # right or up -> max side
+                edge_coord = np.max(coords_block)
+            
+            tol = 1e-12 + 1e-6 * abs(edge_coord)
+            edge_nodes = [n for n in block_c if abs(structural_coords[n][axis] - edge_coord) <= tol]
+            
+            # Pick the longest segment among edge nodes (covers >2 collinear nodes)
+            edge_len = 0.0
+            if len(edge_nodes) >= 2:
+                for i in range(len(edge_nodes)):
+                    for j in range(i + 1, len(edge_nodes)):
+                        p1 = structural_coords[edge_nodes[i]]
+                        p2 = structural_coords[edge_nodes[j]]
+                        edge_len = max(edge_len, np.linalg.norm(p2 - p1))
+            
+            # Convert to 3D area: edge x fin_length
+            A_surf += edge_len * fin_length
+    boundary_areas[c] = A_surf
+if RUN_DEMO:
+    print(f"\nBoundary surface areas computed:")
+    print(f"  - Total boundary areas computed: {len(boundary_areas)}")
 
 # -------- Summary --------
-print(f"\n" + "="*70)
-print("GRID GENERATION COMPLETE")
-print("="*70)
-print(f"Total nodes in grid: {len(structural_coords)}")
-print(f"Total center nodes: {len(center_nodes)}")
-print(f"Total blocks: {len(blocks)}")
-print(f"\nGrid Matrices Available:")
-print(f"  - structural_coords: ({structural_coords.shape[0]}, {structural_coords.shape[1]}) - Node coordinates")
-print(f"  - center_nodes: {len(center_nodes)} nodes - List of center node indices")
-print(f"  - neighbours: ({neighbours.shape[0]}, {neighbours.shape[1]}) - [Center, Left, Right, Up, Down]")
-print(f"  - areas: ({areas.shape[0]},) - Control volume areas (m²)")
-print(f"  - volumes: ({volumes.shape[0]},) - Control volume volumes (m³)")
-print("="*70)
+if RUN_DEMO:
+    print(f"\n" + "="*70)
+    print("GRID GENERATION COMPLETE")
+    print("="*70)
+    print(f"Total nodes in grid: {len(structural_coords)}")
+    print(f"Total center nodes: {len(center_nodes)}")
+    print(f"Total blocks: {len(blocks)}")
+    print(f"\nGrid Matrices Available:")
+    print(f"  - structural_coords: ({structural_coords.shape[0]}, {structural_coords.shape[1]}) - Node coordinates")
+    print(f"  - center_nodes: {len(center_nodes)} nodes - List of center node indices")
+    print(f"  - neighbours: ({neighbours.shape[0]}, {neighbours.shape[1]}) - [Center, Left, Right, Up, Down]")
+    print(f"  - areas: ({areas.shape[0]},) - Control volume areas (m²)")
+    print(f"  - volumes: ({volumes.shape[0]},) - Control volume volumes (m³)")
+    print("="*70)
 
 # ---------------- Plot ----------------
-def plot_grid_with_blocks(structural_coords, center_nodes, nHeight, nWidth):
+def plot_grid_with_blocks(structural_coords, center_nodes, nHeight, nWidth, x_exaggeration=5.0):
     """
     Plot the grid showing all nodes, center nodes, and blocks.
 
@@ -430,16 +555,22 @@ def plot_grid_with_blocks(structural_coords, center_nodes, nHeight, nWidth):
         Number of nodes in eta direction (rows)
     nWidth : int
         Number of nodes in xi direction (columns)
+    x_exaggeration : float, optional
+        Factor to stretch the x-axis for visualization so the thin fin is visible.
     """
+
+    # Exaggerate x for plotting only to make the fin thickness visible
+    scaled_coords = structural_coords.copy()
+    scaled_coords[:, 0] *= x_exaggeration
 
     plt.figure(figsize=(10, 8))
 
     # Plot all nodes first (in blue)
-    plt.scatter(structural_coords[:, 0], structural_coords[:, 1], s=20, marker='o',
+    plt.scatter(scaled_coords[:, 0], scaled_coords[:, 1], s=20, marker='o',
                 color='blue', label='Regular nodes', zorder=3)
 
     # Plot center nodes in a different color (red)
-    center_coords = structural_coords[center_nodes]
+    center_coords = scaled_coords[center_nodes]
     plt.scatter(center_coords[:, 0], center_coords[:, 1], s=50, marker='o',
                 color='red', label='Center nodes', zorder=5)
 
@@ -464,7 +595,7 @@ def plot_grid_with_blocks(structural_coords, center_nodes, nHeight, nWidth):
         ]
 
         # Get coordinates of corners
-        corners = [structural_coords[idx] for idx in corners_idx]
+        corners = [scaled_coords[idx] for idx in corners_idx]
 
         # Draw polygon
         polygon = Polygon(corners, fill=False, edgecolor='green',
@@ -472,7 +603,7 @@ def plot_grid_with_blocks(structural_coords, center_nodes, nHeight, nWidth):
         plt.gca().add_patch(polygon)
 
     # Add labels for all nodes
-    for i, (x, y) in enumerate(structural_coords):
+    for i, (x, y) in enumerate(scaled_coords):
         # Use different color for center nodes labels
         if i in center_nodes:
             plt.text(x + 1e-3, y + 1e-3, str(i), fontsize=7, color='red', fontweight='bold', zorder=6)
@@ -485,13 +616,31 @@ def plot_grid_with_blocks(structural_coords, center_nodes, nHeight, nWidth):
     handles.append(block_patch)
     labels.append('Blocks')
 
+
     plt.title('Structural Grid Points with Blocks')
-    plt.xlabel('Width (X)')
+    plt.xlabel(f'Width (X) [exaggerated x{ x_exaggeration }]')
     plt.ylabel('Height (Y)')
     plt.legend(handles=handles, labels=labels)
     plt.grid(True)
     plt.axis('equal')
     plt.show()
 
-# Call the plotting function
-plot_grid_with_blocks(structural_coords, center_nodes, nHeight, nWidth)
+if RUN_DEMO:
+    # Call the plotting function
+    plot_grid_with_blocks(structural_coords, center_nodes, nHeight, nWidth, x_exaggeration=10.0)
+
+def build_fin_grid_2d():
+    """
+    Returns all geometric data structures needed by the 2D FVM solver.
+    Run this ONLY after the script has executed all preprocessing code.
+    """
+    return (structural_coords,
+            center_nodes,
+            neighbours_dict,
+            areas_dict,
+            volumes_dict,
+            blocks,
+            center_distances,
+            face_lengths,
+            face_areas,
+            boundary_areas)
