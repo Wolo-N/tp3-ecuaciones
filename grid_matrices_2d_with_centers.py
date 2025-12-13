@@ -400,31 +400,33 @@ def build_fin_grid_2d(fin_thickness=0.002,
     half_t_base = fin_thickness / 2.0
     half_t_tip  = tip_ratio * half_t_base
 
-    # ancho a mitad de altura: lo hacemos un poco MÁS ancho que el promedio,
-    # para que el lateral se curve y no sea una recta
-    half_t_mid_linear = 0.5 * (half_t_base + half_t_tip)
-    half_t_mid = half_t_mid_linear + round_factor * (half_t_base - half_t_tip) * 0.5
-    # si round_factor = 0 → queda casi recto
-    # si round_factor = 1 → la "panza" es más gordita
+    # Punta redondeada: las esquinas superiores bajan respecto al centro
+    # round_factor = 0 → punta plana/aguda (todas las esquinas a la misma altura)
+    # round_factor = 1 → punta redondeada (esquinas bajan 10% de la altura)
+    tip_corner_drop = round_factor * fin_height * 0.1
+    tip_corner_height = fin_height - tip_corner_drop
+
+    # Ancho a mitad de altura (promedio lineal entre base y punta)
+    half_t_mid = 0.5 * (half_t_base + half_t_tip)
 
 
     ctrl = np.array([
         # Base (recta)
-        [-half_t_base, 0.0],          # N1: base izquierda
-        [ half_t_base, 0.0],          # N2: base derecha
+        [-half_t_base, 0.0],                # N1: base izquierda
+        [ half_t_base, 0.0],                # N2: base derecha
 
-        # Esquinas de la punta (algo más angostas)
-        [ half_t_tip,  fin_height],   # N3: esquina superior derecha
-        [-half_t_tip,  fin_height],   # N4: esquina superior izquierda
+        # Esquinas de la punta (bajan según round_factor para redondear)
+        [ half_t_tip,  tip_corner_height],  # N3: esquina superior derecha
+        [-half_t_tip,  tip_corner_height],  # N4: esquina superior izquierda
 
         # Puntos intermedios
-        [ 0.0,         0.0],          # N5: centro base
+        [ 0.0,         0.0],                # N5: centro base
 
-        # Mitad de altura: un poco más gordita que el promedio → efecto redondeado
-        [ half_t_mid,  fin_height/2], # N6: mitad derecha
-        [ 0.0,         fin_height],   # N7: centro punta (sigue siendo el "más alto")
-        [-half_t_mid,  fin_height/2], # N8: mitad izquierda
-        [ 0.0,         fin_height/2], # N9: centro medio
+        # Mitad de altura
+        [ half_t_mid,  fin_height/2],       # N6: mitad derecha
+        [ 0.0,         fin_height],         # N7: centro punta (punto más alto)
+        [-half_t_mid,  fin_height/2],       # N8: mitad izquierda
+        [ 0.0,         fin_height/2],       # N9: centro medio
     ])
 
 
@@ -531,25 +533,30 @@ def build_fin_grid_2d(fin_thickness=0.002,
 
     for c_idx, c in enumerate(center_nodes):
         A_surf = 0.0   # accumulate surface area
-    
+
+        # Add FRONT and BACK face areas (in Z direction)
+        # These faces are created when extruding the 2D geometry by fin_length
+        # Both front (Z=0) and back (Z=fin_length) are exposed to air
+        A_surf += 2 * areas_dict[c]  # front + back areas
+
         for direction_idx, neigh in enumerate(neighbours_dict[c]):
             if neigh is None:
                 # boundary face: find the corresponding face length
                 block_c = blocks[c]
-            
+
                 # Determine boundary edge by selecting nodes on the outermost coordinate
                 # Left/Right: use x (axis 0). Up/Down: use y (axis 1).
                 axis = 0 if direction_idx in (1, 2) else 1
                 coords_block = structural_coords[block_c][:, axis]
-            
+
                 if direction_idx in (1, 4):  # left or down -> min side
                     edge_coord = np.min(coords_block)
                 else:  # right or up -> max side
                     edge_coord = np.max(coords_block)
-            
+
                 tol = 1e-12 + 1e-6 * abs(edge_coord)
                 edge_nodes = [n for n in block_c if abs(structural_coords[n][axis] - edge_coord) <= tol]
-            
+
                 # Pick the longest segment among edge nodes (covers >2 collinear nodes)
                 edge_len = 0.0
                 if len(edge_nodes) >= 2:
@@ -558,7 +565,7 @@ def build_fin_grid_2d(fin_thickness=0.002,
                             p1 = structural_coords[edge_nodes[i]]
                             p2 = structural_coords[edge_nodes[j]]
                             edge_len = max(edge_len, np.linalg.norm(p2 - p1))
-            
+
                 # Convert to 3D area: edge x fin_length
                 A_surf += edge_len * fin_length
         boundary_areas[c] = A_surf

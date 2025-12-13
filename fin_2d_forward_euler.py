@@ -150,11 +150,11 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
 
     return T, coords, center_nodes
 
-def evaluate_fin_design(fin_thickness, 
-                        fin_height, 
-                        fin_length=0.05, 
-                        gap=0.001, 
-                        tip_ratio=1.0, 
+def evaluate_fin_design(fin_thickness,
+                        fin_height,
+                        fin_length=0.05,
+                        gap=0.00001,  # 0.06mm gap for tighter packing
+                        tip_ratio=1.0,
                         round_factor=0.5):
     """
     Evalúa un diseño de aleta:
@@ -224,8 +224,7 @@ def evaluate_fin_design(fin_thickness,
 
     # -------- 5. Cuántas aletas entran físicamente --------
     pitch = fin_thickness + gap
-    n_max = int(BASE_SIZE / pitch)
-
+    n_max = int(BASE_SIZE // pitch)
 
     # 6) Cuántas aletas necesito (real) y entero
     n_req_real = Q_REQUIRED / Q_fin
