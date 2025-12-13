@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 # Import your geometry builder
 from grid_matrices_2d_with_centers import build_fin_grid_2d
@@ -226,11 +227,14 @@ def evaluate_fin_design(fin_thickness,
     n_per_row = int(BASE_SIZE // pitch)
     n_max = n_per_row ** 2  # arreglo cuadrado de alet**_
 
-    # -------- 6. Cuántas aletas se necesitan para disipar 500 W --------
-    n_req = Q_REQUIRED / Q_fin
+    # 6) Cuántas aletas necesito (real) y entero
+    n_req_real = Q_REQUIRED / Q_fin
+    n_req = math.ceil(n_req_real)   # número entero de aletas
+
     feasible = n_req <= n_max
 
     m_total = n_req * m_fin
+
 
     return {
         "thickness": fin_thickness,
