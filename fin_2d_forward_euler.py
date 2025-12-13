@@ -1,7 +1,7 @@
 import numpy as np
 
 # Import your geometry builder
-from grid_matrices_2d_with_centers import build_fin_grid_2d, plot_grid_with_blocks
+from grid_matrices_2d_with_centers import build_fin_grid_2d
 
 def stable_timestep(center_nodes, neighbours_dict, face_areas, center_distances,
                     boundary_areas, volumes_dict, rho, cp, k, h, safety=0.5):
@@ -86,7 +86,8 @@ def forward_euler_step(T, dt, k, h, rho, cp, T_inf,
 # ------------------------------------------------------------
 def solve_transient(k, h, rho, cp, T_inf, T_base,
                     dt=0.01, t_final=5.0, tol=1e-6,
-                    fin_thickness=0.0015, fin_height=0.020, fin_length=0.050, tip_ratio=1.0, round_factor=0.5):
+                    fin_thickness=0.0015, fin_height=0.020, 
+                    fin_length=0.050, tip_ratio=1.0, round_factor=0.5):
 
     # --- load geometry ---
     (coords,
@@ -179,12 +180,14 @@ def evaluate_fin_design(fin_thickness,
         k=k, h=h, rho=rho, cp=cp,
         T_inf=T_INF,
         T_base=T_BASE,
-        fin_thickness=fin_thickness,
-        fin_height=fin_height,
-        fin_length=fin_length,
         dt=0.005,
         t_final=5.0,
-        tol=1e-6
+        tol=1e-6,
+        fin_thickness=fin_thickness, 
+        fin_height=fin_height, 
+        fin_length=fin_length, 
+        tip_ratio=tip_ratio,
+        round_factor=round_factor
     )
 
     # -------- 2. Recuperar la geometría completa (incluye boundary_areas) --------
@@ -267,7 +270,8 @@ if __name__ == "__main__":
         fin_thickness=0.0015,
         fin_height=0.020,
         fin_length=0.050,
-        tip_ratio=1.0
+        tip_ratio=1.0,
+        round_factor=0.5
     )
 
     print("Final temperatures at center nodes:")
