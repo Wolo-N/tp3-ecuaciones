@@ -1,7 +1,7 @@
 import numpy as np
 
 # Import your geometry builder
-from grid_matrices_2d_with_centers import build_fin_grid_2d
+from grid_matrices_2d_with_centers import build_fin_grid_2d, plot_grid_with_blocks
 
 def stable_timestep(center_nodes, neighbours_dict, face_areas, center_distances,
                     boundary_areas, volumes_dict, rho, cp, k, h, safety=0.5):
@@ -85,7 +85,8 @@ def forward_euler_step(T, dt, k, h, rho, cp, T_inf,
 # Transient solver
 # ------------------------------------------------------------
 def solve_transient(k, h, rho, cp, T_inf, T_base,
-                    dt=0.01, t_final=5.0, tol=1e-6):
+                    dt=0.01, t_final=5.0, tol=1e-6,
+                    fin_thickness=0.0015, fin_height=0.020, fin_length=0.050, tip_ratio=1.0, round_factor=0.5):
 
     # --- load geometry ---
     (coords,
@@ -97,7 +98,11 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
      center_distances,
      face_lengths,
      face_areas,
-     boundary_areas) = build_fin_grid_2d()
+     boundary_areas) = build_fin_grid_2d(fin_thickness=fin_thickness,
+                                            fin_height=fin_height,
+                                            fin_length=fin_length,
+                                            tip_ratio=tip_ratio,
+                                            round_factor=round_factor)
 
     # Create temperature array for ALL nodes
     T = np.ones(len(coords)) * T_inf
@@ -143,6 +148,99 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
 
     return T, coords, center_nodes
 
+def evaluate_fin_design(fin_thickness, 
+                        fin_height, 
+                        fin_length=0.05, 
+                        gap=0.001, 
+                        tip_ratio=1.0, 
+                        round_factor=0.5):
+    """
+    Evalúa un diseño de aleta:
+    - Corre el solver transitorio para obtener T.
+    - Calcula el calor disipado por UNA aleta.
+    - Calcula la masa de UNA aleta.
+    - Determina cuántas aletas son necesarias para disipar 500 W.
+    - Determina si entran físicamente en el disipador.
+    Devuelve un diccionario con toda la info del diseño.
+    """
+
+    # --- Parámetros físicos globales del problema ---
+    rho = 2700       # aluminio
+    cp  = 900
+    k   = 205
+    h   = 300        # W/m2K
+    Q_REQUIRED = 500 # W requeridos
+    T_INF = 45       # peor caso ambiente
+    T_BASE = 90
+    BASE_SIZE = 0.05 # 50 mm
+
+    # -------- 1. Resolver el campo de temperaturas --------
+    T, coords, center_nodes = solve_transient(
+        k=k, h=h, rho=rho, cp=cp,
+        T_inf=T_INF,
+        T_base=T_BASE,
+        fin_thickness=fin_thickness,
+        fin_height=fin_height,
+        fin_length=fin_length,
+        dt=0.005,
+        t_final=5.0,
+        tol=1e-6
+    )
+
+    # -------- 2. Recuperar la geometría completa (incluye boundary_areas) --------
+    (coords,
+     center_nodes,
+     neighbours_dict,
+     areas_dict,
+     volumes_dict,
+     blocks,
+     center_distances,
+     face_lengths,
+     face_areas,
+     boundary_areas) = build_fin_grid_2d(
+         fin_thickness=fin_thickness,
+         fin_height=fin_height,
+         fin_length=fin_length,
+         tip_ratio=tip_ratio, 
+         round_factor=round_factor
+    )
+
+    # -------- 3. Calor disipado por UNA aleta --------
+    Q_fin = 0.0
+    for c in center_nodes:
+        A_surf = boundary_areas[c]
+        Q_fin += h * A_surf * (T[c] - T_INF)
+
+    if Q_fin <= 0:
+        return None
+
+    # -------- 4. Masa de una aleta --------
+    V_fin = sum(volumes_dict.values())
+    m_fin = rho * V_fin
+
+    # -------- 5. Cuántas aletas entran físicamente --------
+    pitch = fin_thickness + gap
+    n_per_row = int(BASE_SIZE // pitch)
+    n_max = n_per_row ** 2  # arreglo cuadrado de alet**_
+
+    # -------- 6. Cuántas aletas se necesitan para disipar 500 W --------
+    n_req = Q_REQUIRED / Q_fin
+    feasible = n_req <= n_max
+
+    m_total = n_req * m_fin
+
+    return {
+        "thickness": fin_thickness,
+        "height": fin_height,
+        "tip_ratio": tip_ratio,
+        "round_factor": round_factor,
+        "m_fin": m_fin,
+        "Q_fin": Q_fin,
+        "n_required": n_req,
+        "n_max": n_max,
+        "feasible": feasible,
+        "m_total": m_total
+    }
 
 # ------------------------------------------------------------
 # Example of usage
@@ -165,9 +263,17 @@ if __name__ == "__main__":
         T_base=T_base,
         dt=0.01,
         t_final=10.0,
-        tol=1e-6
+        tol=1e-6,
+        fin_thickness=0.0015,
+        fin_height=0.020,
+        fin_length=0.050,
+        tip_ratio=1.0
     )
 
     print("Final temperatures at center nodes:")
     for c in centers[:10]:  # print first 10
         print(c, T[c])
+
+
+    evaluate_design = evaluate_fin_design(fin_thickness=0.0015, fin_height=0.020)
+    print("Evaluation of fin design:", evaluate_design)
