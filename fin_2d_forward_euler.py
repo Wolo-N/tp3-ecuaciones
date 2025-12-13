@@ -224,8 +224,8 @@ def evaluate_fin_design(fin_thickness,
 
     # -------- 5. Cuántas aletas entran físicamente --------
     pitch = fin_thickness + gap
-    n_per_row = int(BASE_SIZE // pitch)
-    n_max = n_per_row ** 2  # arreglo cuadrado de alet**_
+    n_max = int(BASE_SIZE / pitch)
+
 
     # 6) Cuántas aletas necesito (real) y entero
     n_req_real = Q_REQUIRED / Q_fin
