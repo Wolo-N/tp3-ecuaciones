@@ -1,77 +1,87 @@
-# optimize_fins.py
-
+import numpy as np
+import matplotlib.pyplot as plt
+import time
 from fin_2d_forward_euler import evaluate_fin_design
 
-def optimize_fins():
-    """
-    Optimiza el diseño barriendo:
-    - thickness
-    - height
-    - tip_ratio (punta más o menos angosta)
-    - round_factor (lados más o menos redondeados)
-    """
+# Grid search over Q9 shape parameters for ONE fin
+# evaluate_fin_design will determine how many are needed for 500W
+thicknesses = np.linspace(0.0015, 0.004, 5)   # 1.5-4 mm
+heights = np.linspace(0.018, 0.025, 5)        # 18-25 mm (TP3: max 25mm)
+tip_ratios = np.linspace(0.7, 1.0, 3)         # 0.7=tapered, 1.0=rectangular
+round_factors = np.linspace(0.2, 0.8, 3)      # curvature
 
-    best = None
+TIME_LIMIT = 30  # seconds total
 
-    # POCOS valores para que corra rápido
-    thickness_values = [0.0015, 0.0020]      # 1.5 mm y 2.0 mm
-    height_values    = [0.020, 0.025]        # 20 mm y 25 mm
+best_mass = np.inf
+best_params = None
 
-    # Forma: parámetro 1 → angostura de la punta
-    tip_ratios       = [1.0, 0.7, 0.5]       # 1.0 rectangular, 0.7 y 0.5 más angosta
+results = []
+start_time = time.time()
+timeout = False
 
-    # Forma: parámetro 2 → redondez
-    round_factors    = [0.0, 0.4, 0.8]       # 0 = lados rectos, 0.8 = bien redondeada
+for t in thicknesses:
+    if timeout: break
+    for h in heights:
+        if timeout: break
+        for tr in tip_ratios:
+            if timeout: break
+            for rf in round_factors:
 
-    for t in thickness_values:
-        for h in height_values:
-            for tr in tip_ratios:
-                for rf in round_factors:
+                # Check time limit
+                if time.time() - start_time > TIME_LIMIT:
+                    print(f"\nTime limit reached ({TIME_LIMIT}s)")
+                    timeout = True
+                    break
 
-                    print(f"\nProbando diseño:")
-                    print(f"  thickness   = {t*1000:.2f} mm")
-                    print(f"  height      = {h*1000:.1f} mm")
-                    print(f"  tip_ratio   = {tr:.2f}")
-                    print(f"  round_fact  = {rf:.2f}")
+                result = evaluate_fin_design(
+                    fin_thickness=t,
+                    fin_height=h,
+                    tip_ratio=tr,
+                    round_factor=rf
+                )
 
-                    res = evaluate_fin_design(
-                        fin_thickness=t,
-                        fin_height=h,
-                        fin_length=0.05,
-                        gap=0.001,
-                        tip_ratio=tr,
-                        round_factor=rf
-                    )
+                if result and result['feasible']:
+                    results.append({
+                        't': t, 'h': h, 'tr': tr, 'rf': rf,
+                        'mass': result['m_total'],
+                        'Q_fin': result['Q_fin'],
+                        'n_req': result['n_required']
+                    })
 
-                    if (res is None) or (not res["feasible"]):
-                        print("  → no factible")
-                        continue
+                    if result['m_total'] < best_mass:
+                        best_mass = result['m_total']
+                        best_params = (t, h, tr, rf)
+                        print(f"New best: t={t*1e3:.2f}mm h={h*1e3:.2f}mm "
+                              f"tip={tr:.2f} round={rf:.2f} → {best_mass*1e3:.1f}g")
 
-                    print(f"  → factible, masa total = {res['m_total']:.4f} kg")
+if best_params:
+    t, h, tr, rf = best_params
+    print(f"\nOptimal design:")
+    print(f"  thickness = {t*1e3:.2f} mm")
+    print(f"  height = {h*1e3:.2f} mm")
+    print(f"  tip_ratio = {tr:.2f}")
+    print(f"  round_factor = {rf:.2f}")
+    print(f"  total mass = {best_mass*1e3:.1f} g")
 
-                    if (best is None) or (res["m_total"] < best["m_total"]):
-                        best = res
-                        print("  *** nuevo mejor diseño ***")
+    # Plot results
+    masses = [r['mass']*1e3 for r in results]
+    Qs = [r['Q_fin'] for r in results]
 
-    return best
+    plt.figure(figsize=(10, 5))
 
+    plt.subplot(1, 2, 1)
+    plt.scatter([r['h']*1e3 for r in results], masses, c=Qs, cmap='viridis')
+    plt.colorbar(label='Q per fin [W]')
+    plt.xlabel('Height [mm]')
+    plt.ylabel('Total mass [g]')
+    plt.axvline(h*1e3, color='r', linestyle='--', alpha=0.5)
 
-if __name__ == "__main__":
-    best = optimize_fins()
+    plt.subplot(1, 2, 2)
+    plt.scatter([r['t']*1e3 for r in results], masses, c=Qs, cmap='viridis')
+    plt.colorbar(label='Q per fin [W]')
+    plt.xlabel('Thickness [mm]')
+    plt.ylabel('Total mass [g]')
+    plt.axvline(t*1e3, color='r', linestyle='--', alpha=0.5)
 
-    print("\n========================")
-    print("       MEJOR DISEÑO     ")
-    print("========================")
-
-    if best is None:
-        print("No se encontró ningún diseño factible.")
-    else:
-        print(f"Espesor (t):       {best['thickness']*1000:.2f} mm")
-        print(f"Altura (h):        {best['height']*1000:.1f} mm")
-        print(f"tip_ratio:         {best['tip_ratio']:.2f}")
-        print(f"round_factor:      {best['round_factor']:.2f}")
-        print(f"Q por aleta:       {best['Q_fin']:.3f} W")
-        print(f"Masa por aleta:    {best['m_fin']:.6f} kg")
-        print(f"Aletas requeridas: {best['n_required']:.1f}")
-        print(f"Aletas máximas:    {best['n_max']}")
-        print(f"Masa total aletas: {best['m_total']:.4f} kg")
+    plt.tight_layout()
+    plt.show()
