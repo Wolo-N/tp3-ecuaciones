@@ -3,6 +3,7 @@ from numpy import pi, sqrt
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import matplotlib.patches as mpatches
+from parameters import N_HEIGHT, N_WIDTH
 
 
 # ---------------- Shape functions ----------------
@@ -380,8 +381,8 @@ def build_fin_grid_2d(fin_thickness=0.002,
 
 
     # -------- Discretization in natural coordinates --------
-    nHeight = 11  # Number of nodes in eta direction (should be odd for proper center nodes)
-    nWidth  = 11  # Number of nodes in xi direction (should be odd for proper center nodes)
+    nHeight = N_HEIGHT  # Number of nodes in eta direction (should be odd for proper center nodes)
+    nWidth  = N_WIDTH   # Number of nodes in xi direction (should be odd for proper center nodes)
 
 
     h = np.linspace(-1, 1, nHeight)  # eta

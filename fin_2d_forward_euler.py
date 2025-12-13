@@ -3,6 +3,7 @@ import math
 
 # Import your geometry builder
 from grid_matrices_2d_with_centers import build_fin_grid_2d
+from parameters import RHO, CP, K, H, T_INF, T_BASE, Q_REQUIRED, BASE_SIZE
 
 def stable_timestep(center_nodes, neighbours_dict, face_areas, center_distances,
                     boundary_areas, volumes_dict, rho, cp, k, h, safety=0.5):
@@ -153,7 +154,7 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
 def evaluate_fin_design(fin_thickness,
                         fin_height,
                         fin_length=0.05,
-                        gap=0.00001,  # 0.06mm gap for tighter packing
+                        gap=0.001,  # 0.06mm gap for tighter packing
                         tip_ratio=1.0,
                         round_factor=0.5):
     """
@@ -166,19 +167,9 @@ def evaluate_fin_design(fin_thickness,
     Devuelve un diccionario con toda la info del diseño.
     """
 
-    # --- Parámetros físicos globales del problema ---
-    rho = 2700       # aluminio
-    cp  = 900
-    k   = 205
-    h   = 300        # W/m2K
-    Q_REQUIRED = 500 # W requeridos
-    T_INF = 45       # peor caso ambiente
-    T_BASE = 90
-    BASE_SIZE = 0.05 # 50 mm
-
     # -------- 1. Resolver el campo de temperaturas --------
     T, coords, center_nodes = solve_transient(
-        k=k, h=h, rho=rho, cp=cp,
+        k=K, h=H, rho=RHO, cp=CP,
         T_inf=T_INF,
         T_base=T_BASE,
         dt=0.005,
@@ -220,7 +211,7 @@ def evaluate_fin_design(fin_thickness,
 
     # -------- 4. Masa de una aleta --------
     V_fin = sum(volumes_dict.values())
-    m_fin = rho * V_fin
+    m_fin = RHO * V_fin
 
     # -------- 5. Cuántas aletas entran físicamente --------
     pitch = fin_thickness + gap
@@ -254,19 +245,10 @@ def evaluate_fin_design(fin_thickness,
 # ------------------------------------------------------------
 if __name__ == "__main__":
 
-    # Material properties of aluminum
-    rho = 2700         # kg/m³
-    cp  = 900          # J/kg·K
-    k   = 205          # W/m·K
-    h   = 300          # W/m²·K
-
-    T_inf  = 25.0      # ambient air temperature
-    T_base = 90.0      # CPU temperature
-
     T, coords, centers = solve_transient(
-        k, h, rho, cp,
-        T_inf=T_inf,
-        T_base=T_base,
+        K, H, RHO, CP,
+        T_inf=T_INF,
+        T_base=T_BASE,
         dt=0.01,
         t_final=10.0,
         tol=1e-6,
