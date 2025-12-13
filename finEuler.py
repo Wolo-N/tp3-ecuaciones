@@ -1,7 +1,7 @@
 import numpy as np
 
 # Import your geometry builder
-from grid_matrices_2d_with_centers import build_fin_grid_2d
+from finGeometry import build_fin_grid_2d
 
 def stable_timestep(center_nodes, neighbours_dict, face_areas, center_distances,
                     boundary_areas, volumes_dict, rho, cp, k, h, safety=0.5):
@@ -85,7 +85,8 @@ def forward_euler_step(T, dt, k, h, rho, cp, T_inf,
 # Transient solver
 # ------------------------------------------------------------
 def solve_transient(k, h, rho, cp, T_inf, T_base,
-                    dt=0.01, t_final=5.0, tol=1e-6):
+                    dt=0.01, t_final=5.0, tol=1e-6,
+                    save_history=False, save_interval=0.1):
 
     # --- load geometry ---
     (coords,
@@ -105,8 +106,8 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
     # Identify bottom boundary CVs via geometry (lowest y among center nodes)
     y_coords = coords[center_nodes, 1]
     y_min = y_coords.min()
-    tol = 1e-12 + 1e-6 * abs(y_min)
-    bottom_cells = [c for c in center_nodes if coords[c, 1] <= y_min + tol]
+    tol_geom = 1e-12 + 1e-6 * abs(y_min)
+    bottom_cells = [c for c in center_nodes if coords[c, 1] <= y_min + tol_geom]
 
     # Apply base temperature initially
     for c in bottom_cells:
@@ -123,6 +124,14 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
     time = 0.0
     nsteps = int(np.ceil(t_final / dt))
 
+    # History tracking
+    time_history = []
+    temp_history = []
+    if save_history:
+        save_every = max(1, int(save_interval / dt))
+        time_history.append(0.0)
+        temp_history.append(T.copy())
+
     for n in range(nsteps):
         T_old = T.copy()
 
@@ -134,14 +143,25 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
             bottom_cells=bottom_cells, T_base=T_base
         )
 
+        time += dt
+
+        # Save history at specified intervals
+        if save_history and (n + 1) % save_every == 0:
+            time_history.append(time)
+            temp_history.append(T.copy())
+
         max_diff = np.max(np.abs(T - T_old))
         if max_diff < tol:
             print(f"Converged at t = {time:.4f} s, step {n}")
+            if save_history:
+                time_history.append(time)
+                temp_history.append(T.copy())
             break
 
-        time += dt
-
-    return T, coords, center_nodes
+    if save_history:
+        return T, coords, center_nodes, time_history, temp_history
+    else:
+        return T, coords, center_nodes
 
 
 # ------------------------------------------------------------
