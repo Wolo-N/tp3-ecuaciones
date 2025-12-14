@@ -1,5 +1,7 @@
 import numpy as np
 import math
+from scipy.sparse import lil_matrix
+from scipy.sparse.linalg import spsolve
 
 # Import your geometry builder
 from grid_matrices_2d_with_centers import build_fin_grid_2d
@@ -161,37 +163,187 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
     return T, coords, center_nodes
 
 
+# ------------------------------------------------------------
+# Steady-state solver (Direct Linear System)
+# ------------------------------------------------------------
+def solve_steady_state(k, h, T_inf, T_base,
+                       fin_thickness=0.0015, fin_height=0.020,
+                       fin_length=0.050, tip_ratio=1.0, round_factor=0.5):
+    """
+    Resuelve el campo de temperaturas en estado estacionario usando un sistema lineal.
+
+    Mucho más rápido que el solver transitorio para optimización.
+
+    En estado estacionario: 0 = Q_cond + Q_conv
+    Para cada nodo i:
+        Σ_j k*A_ij*(T_j - T_i)/d_ij - h*A_surf_i*(T_i - T_inf) = 0
+
+    Esto forma un sistema lineal: [A]{T} = {b}
+
+    Parameters
+    ----------
+    k : float
+        Conductividad térmica [W/m·K]
+    h : float
+        Coeficiente de convección [W/m²·K]
+    T_inf : float
+        Temperatura ambiente [K]
+    T_base : float
+        Temperatura de la base [K]
+    fin_thickness, fin_height, fin_length, tip_ratio, round_factor : float
+        Parámetros geométricos de la aleta
+
+    Returns
+    -------
+    T : ndarray
+        Campo de temperaturas [K]
+    coords : ndarray
+        Coordenadas de nodos
+    center_nodes : list
+        Índices de nodos centrales
+    """
+
+    # --- Load geometry ---
+    (coords,
+     center_nodes,
+     neighbours_dict,
+     areas,
+     volumes,
+     blocks,
+     center_distances,
+     face_lengths,
+     face_areas,
+     boundary_areas) = build_fin_grid_2d(fin_thickness=fin_thickness,
+                                            fin_height=fin_height,
+                                            fin_length=fin_length,
+                                            tip_ratio=tip_ratio,
+                                            round_factor=round_factor)
+
+    # Identify bottom boundary CVs (Dirichlet BC)
+    y_coords = coords[center_nodes, 1]
+    y_min = y_coords.min()
+    tol_bc = 1e-12 + 1e-6 * abs(y_min)
+    bottom_cells = set([c for c in center_nodes if coords[c, 1] <= y_min + tol_bc])
+
+    # Create mapping: global node index -> matrix row index
+    # Only center_nodes participate in the system
+    node_to_row = {c: i for i, c in enumerate(center_nodes)}
+    n_equations = len(center_nodes)
+
+    # --- Build sparse linear system A*T_centers = b ---
+    # Use lil_matrix for efficient construction
+    A = lil_matrix((n_equations, n_equations))
+    b = np.zeros(n_equations)
+
+    for c in center_nodes:
+        i = node_to_row[c]  # Row index for node c
+
+        if c in bottom_cells:
+            # Dirichlet BC: T[c] = T_base
+            A[i, i] = 1.0
+            b[i] = T_base
+        else:
+            # Energy balance: Σ_j k*A_ij*(T_j - T_i)/d_ij - h*A_surf_i*(T_i - T_inf) = 0
+            # Rearranged: Σ_j (k*A_ij/d_ij)*T_j - T_i*Σ_j(k*A_ij/d_ij + h*A_surf_i) = -h*A_surf_i*T_inf
+
+            diag_sum = 0.0
+
+            # Conduction terms (off-diagonal and diagonal contribution)
+            for j in neighbours_dict[c]:
+                if j is None or j == c:
+                    continue
+
+                A_face = face_areas[(c, j)]
+                d = center_distances[(c, j)]
+
+                coeff = k * A_face / d
+
+                # Off-diagonal: coefficient for T_j
+                j_row = node_to_row[j]  # Row index for neighbor j
+                A[i, j_row] = coeff
+
+                # Diagonal contribution from conduction
+                diag_sum += coeff
+
+            # Convection term (diagonal contribution)
+            A_surf = boundary_areas[c]
+            diag_sum += h * A_surf
+
+            # Diagonal entry
+            A[i, i] = -diag_sum
+
+            # RHS: source term from convection
+            b[i] = -h * A_surf * T_inf
+
+    # Convert to CSR format for efficient solving
+    A_csr = A.tocsr()
+
+    # Solve linear system for center_nodes temperatures
+    T_centers = spsolve(A_csr, b)
+
+    # Build full temperature array (including all nodes)
+    n_nodes = len(coords)
+    T = np.ones(n_nodes) * T_inf  # Initialize all nodes to T_inf
+
+    # Fill in solved temperatures for center nodes
+    for c, i in node_to_row.items():
+        T[c] = T_centers[i]
+
+    return T, coords, center_nodes
+
+
 def evaluate_fin_design(fin_thickness,
                         fin_height,
                         fin_length=0.05,
                         gap=0.001,  # 0.06mm gap for tighter packing
                         tip_ratio=1.0,
                         round_factor=0.5,
-                        check_balance=True):
+                        check_balance=True,
+                        use_steady_state=True):
     """
     Evalúa un diseño de aleta:
-    - Corre el solver transitorio para obtener T.
+    - Corre el solver (estacionario o transitorio) para obtener T.
     - Calcula el calor disipado por UNA aleta.
     - Calcula la masa de UNA aleta.
     - Determina cuántas aletas son necesarias para disipar 500 W.
     - Determina si entran físicamente en el disipador.
     Devuelve un diccionario con toda la info del diseño.
+
+    Parameters
+    ----------
+    use_steady_state : bool
+        Si True, usa el solver estacionario directo (mucho más rápido).
+        Si False, usa el solver transitorio Forward Euler.
     """
 
     # -------- 1. Resolver el campo de temperaturas --------
-    T, coords, center_nodes = solve_transient(
-        k=K, h=H, rho=RHO, cp=CP,
-        T_inf=T_INF,
-        T_base=T_BASE,
-        dt=0.005,
-        t_final=200.0,
-        tol=1e-4,
-        fin_thickness=fin_thickness,
-        fin_height=fin_height,
-        fin_length=fin_length,
-        tip_ratio=tip_ratio,
-        round_factor=round_factor
-    )
+    if use_steady_state:
+        # Solver estacionario directo (RÁPIDO - recomendado para optimización)
+        T, coords, center_nodes = solve_steady_state(
+            k=K, h=H,
+            T_inf=T_INF,
+            T_base=T_BASE,
+            fin_thickness=fin_thickness,
+            fin_height=fin_height,
+            fin_length=fin_length,
+            tip_ratio=tip_ratio,
+            round_factor=round_factor
+        )
+    else:
+        # Solver transitorio Forward Euler (LENTO - solo para verificación)
+        T, coords, center_nodes = solve_transient(
+            k=K, h=H, rho=RHO, cp=CP,
+            T_inf=T_INF,
+            T_base=T_BASE,
+            dt=0.005,
+            t_final=200.0,
+            tol=1e-4,
+            fin_thickness=fin_thickness,
+            fin_height=fin_height,
+            fin_length=fin_length,
+            tip_ratio=tip_ratio,
+            round_factor=round_factor
+        )
 
     # -------- 2. Recuperar la geometría completa (incluye boundary_areas) --------
     (coords,

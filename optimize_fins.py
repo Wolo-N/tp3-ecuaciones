@@ -48,7 +48,7 @@ def save_optimal_design(design, iteration_number, output_dir="optimization_resul
 
     return json_path, png_path
 
-def optimize_fins(max_time=60000000):
+def optimize_fins(max_time=60000000, use_steady_state=True):
     """
     Optimiza el diseño barriendo:
     - thickness
@@ -60,12 +60,21 @@ def optimize_fins(max_time=60000000):
     ----------
     max_time : float
         Tiempo máximo de optimización en segundos (por defecto 60s)
+    use_steady_state : bool
+        Si True, usa el solver estacionario (RÁPIDO).
+        Si False, usa el solver transitorio (LENTO).
     """
 
     start_time = time.time()
     best = None
     time_exceeded = False
     optimal_iteration = 0  # Contador de diseños óptimos encontrados
+
+    # Indicar qué solver se está usando
+    solver_type = "ESTACIONARIO (rápido)" if use_steady_state else "TRANSITORIO (lento)"
+    print(f"\n{'='*60}")
+    print(f"OPTIMIZACIÓN DE ALETAS - Solver: {solver_type}")
+    print(f"{'='*60}\n")
 
     # BÚSQUEDA EXPANDIDA - Más valores para explorar mejor el espacio de diseño
     thickness_values = [0.0005, 0.0001, 0.00005, 0.00001, 0.000005]  # 1.0 - 1.5 mm
@@ -100,7 +109,8 @@ def optimize_fins(max_time=60000000):
                         gap=0.001,  # 0.01mm gap for tighter packing
                         tip_ratio=tr,
                         round_factor=rf,
-                        check_balance=False  # Desactivar heat balance para optimización más rápida
+                        check_balance=False,  # Desactivar heat balance para optimización más rápida
+                        use_steady_state=use_steady_state  # Usar solver especificado
                     )
 
                     if (res is None) or (not res["feasible"]):
@@ -131,6 +141,7 @@ def optimize_fins(max_time=60000000):
 
     print(f"\n{'='*60}")
     print(f"Optimización completada:")
+    print(f"  - Solver usado: {solver_type}")
     print(f"  - Tiempo transcurrido: {elapsed_time:.2f} segundos")
     print(f"  - Diseños óptimos encontrados: {optimal_iteration}")
     print(f"  - Combinaciones totales posibles: {total_combinations}")
