@@ -151,6 +151,7 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
 
     return T, coords, center_nodes
 
+
 def evaluate_fin_design(fin_thickness,
                         fin_height,
                         fin_length=0.05,
@@ -204,7 +205,7 @@ def evaluate_fin_design(fin_thickness,
     Q_fin = 0.0
     for c in center_nodes:
         A_surf = boundary_areas[c]
-        Q_fin += h * A_surf * (T[c] - T_INF)
+        Q_fin += H * A_surf * (T[c] - T_INF)
 
     if Q_fin <= 0:
         return None
@@ -225,6 +226,26 @@ def evaluate_fin_design(fin_thickness,
 
     m_total = n_req * m_fin
 
+    # --------------------------------------------------------
+    # Heat balance verification for this fin design
+    # --------------------------------------------------------
+
+    # Identify bottom cells again (same logic as in solve_transient)
+    y_coords = coords[center_nodes, 1]
+    y_min = y_coords.min()
+    tol = 1e-12 + 1e-6 * abs(y_min)
+    bottom_cells = [c for c in center_nodes if coords[c, 1] <= y_min + tol]
+
+    # Run check
+    check_heat_balance(T,
+                        center_nodes,
+                        bottom_cells,
+                        neighbours_dict,
+                        face_areas,
+                        center_distances,
+                        boundary_areas,
+                        K, H, T_INF)
+
 
     return {
         "thickness": fin_thickness,
@@ -238,6 +259,51 @@ def evaluate_fin_design(fin_thickness,
         "feasible": feasible,
         "m_total": m_total
     }
+
+def check_heat_balance(T,
+                       center_nodes,
+                       bottom_cells,
+                       neighbours_dict,
+                       face_areas,
+                       center_distances,
+                       boundary_areas,
+                       k, h, T_inf):
+    """
+    Verifica balance de energía en estado estacionario.
+    Q_in  = calor que entra por conducción desde la base
+    Q_out = calor que sale por convección hacia el ambiente
+    """
+
+    # --- 1) Calor que entra desde la base ---
+    Q_in = 0.0
+    for c in bottom_cells:
+        for j in neighbours_dict[c]:
+            if j is None or j == c:
+                continue
+            A = face_areas.get((c, j), 0.0)
+            if A == 0.0:
+                continue
+            d = center_distances[(c, j)]
+            # flujo positivo = calor que sale de la base hacia la aleta
+            Q_in += k * A * (T[c] - T[j]) / d
+
+    # --- 2) Calor que sale por convección ---
+    Q_out = 0.0
+    for c in center_nodes:
+        A_surf = boundary_areas[c]
+        Q_out += h * A_surf * (T[c] - T_inf)
+
+    # --- 3) Error relativo ---
+    rel_err = abs(Q_in - Q_out) / max(abs(Q_in), abs(Q_out), 1e-12) * 100
+
+    print("\n=== HEAT BALANCE VERIFICATION ===")
+    print(f"Heat entering from base      Q_in  = {Q_in:.4f} W")
+    print(f"Heat leaving by convection   Q_out = {Q_out:.4f} W")
+    print(f"Relative error = {rel_err:.2f}%")
+    print("==================================\n")
+
+    return Q_in, Q_out, rel_err
+
 
 # ------------------------------------------------------------
 # Example of usage
@@ -264,5 +330,10 @@ if __name__ == "__main__":
         print(c, T[c])
 
 
-    evaluate_design = evaluate_fin_design(fin_thickness=0.0015, fin_height=0.020)
+    evaluate_design = evaluate_fin_design(fin_thickness=0.0015,
+                                            fin_height=0.020,
+                                            fin_length=0.050,
+                                            gap=0.001,
+                                            tip_ratio=1.0,
+                                            round_factor=0.5)
     print("Evaluation of fin design:", evaluate_design)

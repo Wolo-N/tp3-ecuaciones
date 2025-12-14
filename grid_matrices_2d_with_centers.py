@@ -123,6 +123,10 @@ def get_center_neighbors_from_grid(center_idx, center_nodes_grid, nWidth):
     Get the neighbors of a center node using the grid structure in the format:
     [Center, Left, Right, Up, Down]
 
+    NOTE: Due to how meshgrid is set up:
+        - row index maps to X coordinate (fin thickness direction)
+        - col index maps to Y coordinate (fin height direction)
+
     Parameters
     ----------
     center_idx : int
@@ -144,23 +148,23 @@ def get_center_neighbors_from_grid(center_idx, center_nodes_grid, nWidth):
     # Initialize neighbors: [Center, Left, Right, Up, Down]
     neighbors = [center_idx, None, None, None, None]
 
-    # Left neighbor: same row, col - 2
-    left_key = (center_row, center_col - 2)
+    # Left neighbor: row - 2 (lower X), same col
+    left_key = (center_row - 2, center_col)
     if left_key in center_nodes_grid:
         neighbors[1] = center_nodes_grid[left_key]
 
-    # Right neighbor: same row, col + 2
-    right_key = (center_row, center_col + 2)
+    # Right neighbor: row + 2 (higher X), same col
+    right_key = (center_row + 2, center_col)
     if right_key in center_nodes_grid:
         neighbors[2] = center_nodes_grid[right_key]
 
-    # Up neighbor: row + 2 (higher y), same col
-    up_key = (center_row + 2, center_col)
+    # Up neighbor: same row, col + 2 (higher Y)
+    up_key = (center_row, center_col + 2)
     if up_key in center_nodes_grid:
         neighbors[3] = center_nodes_grid[up_key]
 
-    # Down neighbor: row - 2 (lower y), same col
-    down_key = (center_row - 2, center_col)
+    # Down neighbor: same row, col - 2 (lower Y)
+    down_key = (center_row, center_col - 2)
     if down_key in center_nodes_grid:
         neighbors[4] = center_nodes_grid[down_key]
 
@@ -546,13 +550,17 @@ def build_fin_grid_2d(fin_thickness=0.002,
                 block_c = blocks[c]
 
                 # Determine boundary edge by selecting nodes on the outermost coordinate
-                # Left/Right: use x (axis 0). Up/Down: use y (axis 1).
+                # direction_idx: 0=Center, 1=Left, 2=Right, 3=Up, 4=Down
+                # Left/Right (1,2): boundaries in X direction (axis 0)
+                # Up/Down (3,4): boundaries in Y direction (axis 1)
                 axis = 0 if direction_idx in (1, 2) else 1
                 coords_block = structural_coords[block_c][:, axis]
 
-                if direction_idx in (1, 4):  # left or down -> min side
+                # Left (1) or Down (4) → minimum edge
+                # Right (2) or Up (3) → maximum edge
+                if direction_idx in (1, 4):
                     edge_coord = np.min(coords_block)
-                else:  # right or up -> max side
+                else:
                     edge_coord = np.max(coords_block)
 
                 tol = 1e-12 + 1e-6 * abs(edge_coord)
