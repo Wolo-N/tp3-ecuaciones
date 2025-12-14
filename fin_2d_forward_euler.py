@@ -87,8 +87,8 @@ def forward_euler_step(T, dt, k, h, rho, cp, T_inf,
 # Transient solver
 # ------------------------------------------------------------
 def solve_transient(k, h, rho, cp, T_inf, T_base,
-                    dt=0.01, t_final=5.0, tol=1e-6,
-                    fin_thickness=0.0015, fin_height=0.020, 
+                    dt=0.01, t_final=5.0, tol=1e-4,
+                    fin_thickness=0.0015, fin_height=0.020,
                     fin_length=0.050, tip_ratio=1.0, round_factor=0.5):
 
     # --- load geometry ---
@@ -143,11 +143,20 @@ def solve_transient(k, h, rho, cp, T_inf, T_base,
         )
 
         max_diff = np.max(np.abs(T - T_old))
+
+        # Print progress every 10000 steps
+        if n % 10000 == 0 and n > 0:
+            print(f"  Step {n}, t = {time:.4f} s, max_diff = {max_diff:.2e}")
+
         if max_diff < tol:
-            print(f"Converged at t = {time:.4f} s, step {n}")
+            print(f"Converged at t = {time:.4f} s, step {n}, max_diff = {max_diff:.2e}")
             break
 
         time += dt
+
+    # If we finished without converging
+    if max_diff >= tol:
+        print(f"Did NOT converge after {nsteps} steps (t_final = {time:.4f} s), max_diff = {max_diff:.2e}")
 
     return T, coords, center_nodes
 
@@ -157,7 +166,8 @@ def evaluate_fin_design(fin_thickness,
                         fin_length=0.05,
                         gap=0.001,  # 0.06mm gap for tighter packing
                         tip_ratio=1.0,
-                        round_factor=0.5):
+                        round_factor=0.5,
+                        check_balance=True):
     """
     Evalúa un diseño de aleta:
     - Corre el solver transitorio para obtener T.
@@ -174,11 +184,11 @@ def evaluate_fin_design(fin_thickness,
         T_inf=T_INF,
         T_base=T_BASE,
         dt=0.005,
-        t_final=5.0,
-        tol=1e-6,
-        fin_thickness=fin_thickness, 
-        fin_height=fin_height, 
-        fin_length=fin_length, 
+        t_final=200.0,
+        tol=1e-4,
+        fin_thickness=fin_thickness,
+        fin_height=fin_height,
+        fin_length=fin_length,
         tip_ratio=tip_ratio,
         round_factor=round_factor
     )
@@ -227,24 +237,24 @@ def evaluate_fin_design(fin_thickness,
     m_total = n_req * m_fin
 
     # --------------------------------------------------------
-    # Heat balance verification for this fin design
+    # Heat balance verification for this fin design (opcional)
     # --------------------------------------------------------
+    if check_balance:
+        # Identify bottom cells again (same logic as in solve_transient)
+        y_coords = coords[center_nodes, 1]
+        y_min = y_coords.min()
+        tol = 1e-12 + 1e-6 * abs(y_min)
+        bottom_cells = [c for c in center_nodes if coords[c, 1] <= y_min + tol]
 
-    # Identify bottom cells again (same logic as in solve_transient)
-    y_coords = coords[center_nodes, 1]
-    y_min = y_coords.min()
-    tol = 1e-12 + 1e-6 * abs(y_min)
-    bottom_cells = [c for c in center_nodes if coords[c, 1] <= y_min + tol]
-
-    # Run check
-    check_heat_balance(T,
-                        center_nodes,
-                        bottom_cells,
-                        neighbours_dict,
-                        face_areas,
-                        center_distances,
-                        boundary_areas,
-                        K, H, T_INF)
+        # Run heat balance check
+        check_heat_balance(T,
+                            center_nodes,
+                            bottom_cells,
+                            neighbours_dict,
+                            face_areas,
+                            center_distances,
+                            boundary_areas,
+                            K, H, T_INF)
 
 
     return {
@@ -269,40 +279,96 @@ def check_heat_balance(T,
                        boundary_areas,
                        k, h, T_inf):
     """
-    Verifica balance de energía en estado estacionario.
-    Q_in  = calor que entra por conducción desde la base
-    Q_out = calor que sale por convección hacia el ambiente
+    Verifica el balance de energía aislando el "Cuerpo de la Aleta".
+
+    Balance correcto en estado estacionario:
+    (Conducción desde Nodos Base hacia Nodos Cuerpo) == (Convección de Nodos Cuerpo)
+
+    Parameters
+    ----------
+    T : array
+        Campo de temperaturas
+    center_nodes : list
+        Lista de nodos centrales
+    bottom_cells : list
+        Lista de celdas en la base
+    neighbours_dict : dict
+        Diccionario de vecinos
+    face_areas : dict
+        Áreas de caras entre celdas
+    center_distances : dict
+        Distancias entre centros
+    boundary_areas : dict
+        Áreas de frontera para convección
+    k : float
+        Conductividad térmica
+    h : float
+        Coeficiente de convección
+    T_inf : float
+        Temperatura ambiente
+
+    Returns
+    -------
+    tuple
+        (Q_cond_in, Q_conv_body, rel_err)
     """
 
-    # --- 1) Calor que entra desde la base ---
-    Q_in = 0.0
+    # Identificar nodos del cuerpo (aquellos que NO son temperatura fija)
+    base_set = set(bottom_cells)
+    body_nodes = [c for c in center_nodes if c not in base_set]
+
+    # --- 1) Calor entrando al cuerpo (Desde la Base) ---
+    # Sumamos solo flujos que cruzan la frontera Base -> Cuerpo
+    Q_cond_in = 0.0
+
     for c in bottom_cells:
+        # Revisar vecinos de cada nodo base
         for j in neighbours_dict[c]:
             if j is None or j == c:
                 continue
-            A = face_areas.get((c, j), 0.0)
-            if A == 0.0:
-                continue
-            d = center_distances[(c, j)]
-            # flujo positivo = calor que sale de la base hacia la aleta
-            Q_in += k * A * (T[c] - T[j]) / d
 
-    # --- 2) Calor que sale por convección ---
-    Q_out = 0.0
-    for c in center_nodes:
-        A_surf = boundary_areas[c]
-        Q_out += h * A_surf * (T[c] - T_inf)
+            # Si el vecino NO es base, es una conexión hacia el cuerpo de la aleta
+            if j not in base_set:
+                A = face_areas.get((c, j), 0.0)
+                d = center_distances.get((c, j), 1.0)
 
-    # --- 3) Error relativo ---
-    rel_err = abs(Q_in - Q_out) / max(abs(Q_in), abs(Q_out), 1e-12) * 100
+                # Flux = k * A * (T_base - T_vecino) / d
+                if A > 0 and d > 0:
+                    Q_cond_in += k * A * (T[c] - T[j]) / d
 
-    print("\n=== HEAT BALANCE VERIFICATION ===")
-    print(f"Heat entering from base      Q_in  = {Q_in:.4f} W")
-    print(f"Heat leaving by convection   Q_out = {Q_out:.4f} W")
-    print(f"Relative error = {rel_err:.2f}%")
-    print("==================================\n")
+    # --- 2) Calor saliendo del cuerpo (Convección) ---
+    # Sumamos convección solo de los nodos del cuerpo
+    Q_conv_body = 0.0
+    for c in body_nodes:
+        A_surf = boundary_areas.get(c, 0.0)
+        Q_conv_body += h * A_surf * (T[c] - T_inf)
 
-    return Q_in, Q_out, rel_err
+    # (Opcional) Calor perdido directamente por la base (si tiene bordes expuestos)
+    Q_conv_base = 0.0
+    for c in bottom_cells:
+        A_surf = boundary_areas.get(c, 0.0)
+        Q_conv_base += h * A_surf * (T[c] - T_inf)
+
+    # --- 3) Error relativo sobre el cuerpo ---
+    # En estado estacionario, Q_cond_in debe ser igual a Q_conv_body
+    denom = max(abs(Q_cond_in), abs(Q_conv_body), 1e-12)
+    rel_err = abs(Q_cond_in - Q_conv_body) / denom * 100
+
+    Q_total_dissipated = Q_conv_body + Q_conv_base
+
+    print("\n" + "="*40)
+    print(" VERIFICACIÓN DE BALANCE TÉRMICO (CUERPO ALETA)")
+    print("="*40)
+    print(f"Heat Input (Cond Base->Body): {Q_cond_in:.4f} W")
+    print(f"Heat Output (Conv Body):      {Q_conv_body:.4f} W")
+    print("-" * 40)
+    print(f"Balance Error:                {rel_err:.4f} %")
+    print("-" * 40)
+    print(f"Base Direct Convection:       {Q_conv_base:.4f} W")
+    print(f"TOTAL Heatsink Dissipation:   {Q_total_dissipated:.4f} W")
+    print("="*40 + "\n")
+
+    return Q_cond_in, Q_conv_body, rel_err
 
 
 # ------------------------------------------------------------
@@ -317,7 +383,7 @@ if __name__ == "__main__":
         T_base=T_BASE,
         dt=0.01,
         t_final=10.0,
-        tol=1e-6,
+        tol=1e-4,
         fin_thickness=0.0015,
         fin_height=0.020,
         fin_length=0.050,

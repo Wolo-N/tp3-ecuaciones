@@ -16,5 +16,5 @@ Q_REQUIRED = 500    # Calor total a disipar [W]
 BASE_SIZE = 0.05    # Tamaño de la base del disipador [m] (50 mm)
 
 # Discretización de la malla FVM
-N_HEIGHT = 21   # Número de nodos en dirección Y (altura) - debe ser impar
-N_WIDTH = 21    # Número de nodos en dirección X (espesor) - debe ser impar
+N_HEIGHT = 11   # Número de nodos en dirección Y (altura) - debe ser impar
+N_WIDTH = 11    # Número de nodos en dirección X (espesor) - debe ser impar
