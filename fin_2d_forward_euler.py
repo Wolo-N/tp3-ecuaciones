@@ -4,7 +4,7 @@ from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import spsolve
 
 # Import your geometry builder
-from grid_matrices_2d_with_centers import build_fin_grid_2d
+from finGridwCenters import build_fin_grid_2d
 from parameters import RHO, CP, K, H, T_INF, T_BASE, Q_REQUIRED, BASE_SIZE
 
 def stable_timestep(center_nodes, neighbours_dict, face_areas, center_distances,

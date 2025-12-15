@@ -1,4 +1,4 @@
-from plot_fins import plot_temperature_heatmap, plot_temperature_3d
+from plots import plot_temperature_heatmap, plot_temperature_3d
 from fin_2d_forward_euler import evaluate_fin_design
 
 # Test design

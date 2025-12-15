@@ -5,7 +5,7 @@ Gráfico de evolución térmica desde el estado inicial hasta el estado estacion
 import numpy as np
 import matplotlib.pyplot as plt
 
-from grid_matrices_2d_with_centers import build_fin_grid_2d
+from finGridwCenters import build_fin_grid_2d
 from fin_2d_forward_euler import stable_timestep, forward_euler_step
 from parameters import RHO, CP, K, H, T_INF, T_BASE
 

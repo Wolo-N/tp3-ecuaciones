@@ -3,7 +3,7 @@
 from fin_2d_forward_euler import solve_transient
 import matplotlib.pyplot as plt
 import numpy as np
-from grid_matrices_2d_with_centers import build_fin_grid_2d, plot_grid_with_blocks
+from finGridwCenters import build_fin_grid_2d, plot_grid_with_blocks
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d import Axes3D

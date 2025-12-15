@@ -1,7 +1,7 @@
 # optimize_fins.py
 
 from fin_2d_forward_euler import evaluate_fin_design
-from plot_fins import plot_best_fin
+from plots import plot_best_fin
 import time
 import json
 import os
@@ -9,6 +9,7 @@ import matplotlib
 matplotlib.use('Agg')  # Backend no interactivo para guardar sin mostrar
 import matplotlib.pyplot as plt
 from datetime import datetime
+import numpy as np
 
 def save_optimal_design(design, iteration_number, output_dir="optimization_results"):
     """
@@ -77,14 +78,15 @@ def optimize_fins(max_time=60000000, use_steady_state=True):
     print(f"{'='*60}\n")
 
     # BÚSQUEDA EXPANDIDA - Más valores para explorar mejor el espacio de diseño
-    thickness_values = [0.0005, 0.0001, 0.00005, 0.00001, 0.000005]  # 1.0 - 1.5 mm
-    height_values    = [0.020, 0.022, 0.025]
+    # Formato: np.linspace(min, max, steps)
+    thickness_values = np.linspace(0.000005, 0.00001, 15)  # 0.005mm - 0.5mm (15 valores)
+    height_values    = np.linspace(0.015, 0.025, 10)      # 15mm - 30mm (10 valores)
 
     # Forma: parámetro 1 → angostura de la punta
-    tip_ratios       = [1.0, 0.5, 0.1]  # 1.0 rectangular hasta 0.1 muy angosta
+    tip_ratios       = np.linspace(0.05, 1.0, 10)  # 0.05 muy angosta hasta 1.0 rectangular (10 valores)
 
     # Forma: parámetro 2 → redondez
-    round_factors    = [0.0, 0.5, 1.0]  # 0 = rectos, 1.0 = muy redondeada
+    round_factors    = np.linspace(0.0, 1.0, 8)  # 0 = rectos, 1.0 = muy redondeada (8 valores)
 
     for t in thickness_values:
         for h in height_values:
