@@ -1,6 +1,6 @@
 # optimize_fins.py
 
-from fin_2d_forward_euler import evaluate_fin_design
+from finEuler import evaluate_fin_design
 from plots import plot_best_fin
 import time
 import json

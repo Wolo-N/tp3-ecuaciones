@@ -1,6 +1,6 @@
 # plot_fins.py
 
-from fin_2d_forward_euler import solve_transient
+from finEuler import solve_transient
 import matplotlib.pyplot as plt
 import numpy as np
 from finGridwCenters import build_fin_grid_2d, plot_grid_with_blocks

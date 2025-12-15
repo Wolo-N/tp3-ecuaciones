@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from finGridwCenters import build_fin_grid_2d
-from fin_2d_forward_euler import stable_timestep, forward_euler_step
+from finEuler import stable_timestep, forward_euler_step
 from parameters import RHO, CP, K, H, T_INF, T_BASE
 
 
