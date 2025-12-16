@@ -1,14 +1,29 @@
 import numpy as np
-from numpy import pi, sqrt
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
-import matplotlib.patches as mpatches
+from numpy import sqrt
 from parameters import N_HEIGHT, N_WIDTH
 
 
-# ---------------- Shape functions ----------------
+# ============================================================================
+# FUNCIONES DE FORMA Q9
+# ============================================================================
+
 def q9_shape_functions(xi, eta):
-    # 1D quadratic Lagrange polynomials
+    """
+    Calcula las funciones de forma Q9 (elemento cuadrático de 9 nodos).
+
+    Parámetros
+    ----------
+    xi : float
+        Coordenada natural en dirección xi ∈ [-1, 1]
+    eta : float
+        Coordenada natural en dirección eta ∈ [-1, 1]
+
+    Retorna
+    -------
+    N : ndarray
+        Vector con las 9 funciones de forma evaluadas en (xi, eta)
+    """
+    # Polinomios de Lagrange cuadráticos en 1D
     L1 = 0.5 * xi * (xi - 1.0)
     L2 = 1.0 - xi**2
     L3 = 0.5 * xi * (xi + 1.0)
@@ -17,76 +32,85 @@ def q9_shape_functions(xi, eta):
     M2 = 1.0 - eta**2
     M3 = 0.5 * eta * (eta + 1.0)
 
-    # Tensor-product shape functions (Q9)
+    # Funciones de forma por producto tensorial (Q9)
     N = np.array([
-        L1*M1,  # N1 (-1,-1)
-        L3*M1,  # N2 ( 1,-1)
-        L3*M3,  # N3 ( 1, 1)
-        L1*M3,  # N4 (-1, 1)
-        L2*M1,  # N5 ( 0,-1)
-        L3*M2,  # N6 ( 1, 0)
-        L2*M3,  # N7 ( 0, 1)
-        L1*M2,  # N8 (-1, 0)
-        L2*M2   # N9 ( 0, 0)
+        L1 * M1,  # N1 (-1,-1) esquina inferior izquierda
+        L3 * M1,  # N2 ( 1,-1) esquina inferior derecha
+        L3 * M3,  # N3 ( 1, 1) esquina superior derecha
+        L1 * M3,  # N4 (-1, 1) esquina superior izquierda
+        L2 * M1,  # N5 ( 0,-1) medio inferior
+        L3 * M2,  # N6 ( 1, 0) medio derecha
+        L2 * M3,  # N7 ( 0, 1) medio superior
+        L1 * M2,  # N8 (-1, 0) medio izquierda
+        L2 * M2   # N9 ( 0, 0) centro
     ])
     return N
 
-# --------------- Interpolation -------------------
+
+# ============================================================================
+# INTERPOLACIÓN CON FUNCIONES DE FORMA Q9
+# ============================================================================
+
 def q9_interpolate_points(ctrl_pts, natural_coords):
     """
-    Interpolate many physical coordinates (X,Y) using Q9 shape functions.
+    Interpola coordenadas físicas (X,Y) usando funciones de forma Q9.
 
-    Parameters
+    Parámetros
     ----------
     ctrl_pts : (9,2) array_like
-        Control-point coordinates ordered as:
+        Coordenadas de los 9 puntos de control en el orden:
         [(-1,-1), ( 1,-1), ( 1, 1), (-1, 1),
          ( 0,-1), ( 1, 0), ( 0, 1), (-1, 0), ( 0, 0)]
     natural_coords : (m,2) array_like
-        Each row is (xi, eta) in [-1,1]^2.
+        Cada fila es (xi, eta) en [-1,1]²
 
-    Returns
+    Retorna
     -------
     structural_coords : (m,2) ndarray
-        Interpolated points.
+        Puntos interpolados en coordenadas físicas
     """
     ctrl_pts = np.asarray(ctrl_pts, dtype=float).reshape(9, 2)
     natural_coords = np.asarray(natural_coords, dtype=float).reshape(-1, 2)
 
-    # Build matrix of shape functions for all query points
-    Nmat = np.vstack([q9_shape_functions(xi, eta) for xi, eta in natural_coords])  # (m,9)
+    # Construir matriz de funciones de forma para todos los puntos
+    Nmat = np.vstack([q9_shape_functions(xi, eta)
+                      for xi, eta in natural_coords])  # (m, 9)
 
-    # Interpolate all points at once
-    structural_coords = Nmat @ ctrl_pts  # (m,2)
+    # Interpolar todos los puntos simultáneamente
+    structural_coords = Nmat @ ctrl_pts  # (m, 2)
     return structural_coords
 
-# -------- Select center nodes (every other node in both x and y) --------
+
+# ============================================================================
+# SELECCIÓN DE NODOS CENTRALES (CENTROS DE VOLÚMENES DE CONTROL)
+# ============================================================================
+
 def get_center_nodes(nHeight, nWidth):
     """
-    Select center nodes from the grid by taking every other node in both directions.
+    Selecciona nodos centrales tomando 1 de cada 2 nodos en ambas direcciones.
 
-    For an 11x11 grid, this selects nodes at rows 0, 2, 4, 6, 8, 10 and
-    columns 0, 2, 4, 6, 8, 10, creating a 6x6 grid of center nodes.
+    Para una malla de 11×11, selecciona nodos en filas 0, 2, 4, 6, 8, 10 y
+    columnas 0, 2, 4, 6, 8, 10, creando una submalla de 6×6 nodos centrales.
 
-    Parameters
+    Parámetros
     ----------
     nHeight : int
-        Number of nodes in eta direction (rows)
+        Número de nodos en dirección eta (filas)
     nWidth : int
-        Number of nodes in xi direction (columns)
+        Número de nodos en dirección xi (columnas)
 
-    Returns
+    Retorna
     -------
     center_nodes : list
-        List of global node indices for center nodes
+        Lista de índices globales de los nodos centrales
     center_nodes_grid : dict
-        Dictionary mapping (row, col) -> global index for center nodes
+        Diccionario que mapea (fila, col) → índice global de nodos centrales
     """
     center_nodes = []
-    center_nodes_grid = {}  # Map (row, col) -> global index for center nodes
+    center_nodes_grid = {}
 
-    for row in range(0, nHeight, 2):  # rows 0, 2, 4, 6, 8, 10
-        for col in range(0, nWidth, 2):  # cols 0, 2, 4, 6, 8, 10
+    for row in range(0, nHeight, 2):  # Filas 0, 2, 4, 6, 8, 10
+        for col in range(0, nWidth, 2):  # Columnas 0, 2, 4, 6, 8, 10
             node_index = row * nWidth + col
             center_nodes.append(node_index)
             center_nodes_grid[(row, col)] = node_index
@@ -94,76 +118,97 @@ def get_center_nodes(nHeight, nWidth):
     return center_nodes, center_nodes_grid
 
 
-# -------- Define blocks (3x3 neighborhoods) around each center node --------
+
+# ============================================================================
+# DEFINICIÓN DE BLOQUES (VECINDARIOS 3×3 ALREDEDOR DE CADA NODO CENTRAL)
+# ============================================================================
+
 def get_block_nodes(center_idx, nWidth, nHeight):
     """
-    Get the 9 nodes (3x3 block) around a center node.
-    Returns list of node indices in the block.
+    Obtiene los nodos del bloque 3×3 alrededor de un nodo central.
+
+    Parámetros
+    ----------
+    center_idx : int
+        Índice global del nodo central
+    nWidth : int
+        Ancho de la malla (número de nodos en dirección X)
+    nHeight : int
+        Altura de la malla (número de nodos en dirección Y)
+
+    Retorna
+    -------
+    block : list
+        Lista de índices de nodos en el bloque (hasta 9 nodos)
     """
-    # Convert center index to row, col
+    # Convertir índice global a (fila, columna)
     center_row = center_idx // nWidth
     center_col = center_idx % nWidth
 
     block = []
-    # Get 3x3 neighborhood (including the center)
-    for dr in [-1, 0, 1]:  # row offset
-        for dc in [-1, 0, 1]:  # column offset
+    # Obtener vecindario 3×3 (incluyendo el centro)
+    for dr in [-1, 0, 1]:  # Desplazamiento en filas
+        for dc in [-1, 0, 1]:  # Desplazamiento en columnas
             r = center_row + dr
             c = center_col + dc
-            # Check if within grid bounds
+            # Verificar que esté dentro de los límites de la malla
             if 0 <= r < nHeight and 0 <= c < nWidth:
                 block.append(r * nWidth + c)
 
     return block
 
 
-# -------- Build neighbor connectivity for center nodes --------
+
+# ============================================================================
+# CONECTIVIDAD ENTRE NODOS CENTRALES (VECINOS)
+# ============================================================================
+
 def get_center_neighbors_from_grid(center_idx, center_nodes_grid, nWidth):
     """
-    Get the neighbors of a center node using the grid structure in the format:
-    [Center, Left, Right, Up, Down]
+    Obtiene los vecinos de un nodo central en el formato:
+    [Centro, Izquierda, Derecha, Arriba, Abajo]
 
-    NOTE: Due to how meshgrid is set up:
-        - row index maps to X coordinate (fin thickness direction)
-        - col index maps to Y coordinate (fin height direction)
+    NOTA: Debido a cómo está configurado meshgrid:
+        - Índice de fila → coordenada X (dirección del espesor de la aleta)
+        - Índice de columna → coordenada Y (dirección de la altura de la aleta)
 
-    Parameters
+    Parámetros
     ----------
     center_idx : int
-        Global grid index of the center node
+        Índice global del nodo central en la malla
     center_nodes_grid : dict
-        Dictionary mapping (row, col) -> global index for center nodes
+        Diccionario que mapea (fila, col) → índice global de nodos centrales
     nWidth : int
-        Width of the full grid
+        Ancho de la malla completa
 
-    Returns
+    Retorna
     -------
     neighbors : list
-        [Center, Left, Right, Up, Down] where None indicates no neighbor
+        [Centro, Izq, Der, Arriba, Abajo] donde None indica ausencia de vecino
     """
-    # Convert center index to row, col in the global grid
+    # Convertir índice central a (fila, columna) en la malla global
     center_row = center_idx // nWidth
     center_col = center_idx % nWidth
 
-    # Initialize neighbors: [Center, Left, Right, Up, Down]
+    # Inicializar vecinos: [Centro, Izquierda, Derecha, Arriba, Abajo]
     neighbors = [center_idx, None, None, None, None]
 
-    # Left neighbor: row - 2 (lower X), same col
+    # Vecino izquierdo: fila - 2 (menor X), misma columna
     left_key = (center_row - 2, center_col)
     if left_key in center_nodes_grid:
         neighbors[1] = center_nodes_grid[left_key]
 
-    # Right neighbor: row + 2 (higher X), same col
+    # Vecino derecho: fila + 2 (mayor X), misma columna
     right_key = (center_row + 2, center_col)
     if right_key in center_nodes_grid:
         neighbors[2] = center_nodes_grid[right_key]
 
-    # Up neighbor: same row, col + 2 (higher Y)
+    # Vecino superior: misma fila, columna + 2 (mayor Y)
     up_key = (center_row, center_col + 2)
     if up_key in center_nodes_grid:
         neighbors[3] = center_nodes_grid[up_key]
 
-    # Down neighbor: same row, col - 2 (lower Y)
+    # Vecino inferior: misma fila, columna - 2 (menor Y)
     down_key = (center_row, center_col - 2)
     if down_key in center_nodes_grid:
         neighbors[4] = center_nodes_grid[down_key]
@@ -171,115 +216,122 @@ def get_center_neighbors_from_grid(center_idx, center_nodes_grid, nWidth):
     return neighbors
 
 
-# -------- Compute Areas using Heron's Formula --------
+
+# ============================================================================
+# CÁLCULO DE ÁREAS
+# ============================================================================
+
 def heron_triangle_area(p1, p2, p3):
     """
-    Calculate the area of a triangle using Heron's formula.
+    Calcula el área de un triángulo usando la fórmula de Herón.
 
-    Parameters
+    Parámetros
     ----------
     p1, p2, p3 : array_like
-        Coordinates of the three vertices of the triangle
+        Coordenadas de los tres vértices del triángulo
 
-    Returns
+    Retorna
     -------
     area : float
-        Area of the triangle
+        Área del triángulo en m²
     """
-    # Calculate side lengths
+    # Calcular longitudes de los lados
     a = np.linalg.norm(p2 - p1)
     b = np.linalg.norm(p3 - p2)
     c = np.linalg.norm(p1 - p3)
 
-    # Semi-perimeter
+    # Semiperímetro
     s = (a + b + c) / 2.0
 
-    # Heron's formula
+    # Fórmula de Herón: A = √[s(s-a)(s-b)(s-c)]
     val = s * (s - a) * (s - b) * (s - c)
     if val <= 0:
-        return 0.0  # Degenerate or collinear triangle; no area
+        return 0.0  # Triángulo degenerado o colineal; sin área
     area = sqrt(val)
 
     return area
 
+
 def _compute_angle_from_center(node_idx, center_pos, structural_coords):
     """
-    Helper function to compute the angle from center to a node.
+    Función auxiliar para calcular el ángulo desde el centro hacia un nodo.
 
-    Parameters
+    Parámetros
     ----------
     node_idx : int
-        Global index of the node
+        Índice global del nodo
     center_pos : ndarray
-        Position of the center node
+        Posición del nodo central
     structural_coords : ndarray
-        Coordinates of all nodes
+        Coordenadas de todos los nodos
 
-    Returns
+    Retorna
     -------
     angle : float
-        Angle in radians from center to node
+        Ángulo en radianes desde el centro hacia el nodo
     """
     node_pos = structural_coords[node_idx]
     dx = node_pos[0] - center_pos[0]
     dy = node_pos[1] - center_pos[1]
     return np.arctan2(dy, dx)
 
+
 def compute_block_area(center_idx, block_nodes, structural_coords):
     """
-    Compute the area of a block by splitting it into triangles.
-    Each triangle has the center node as one vertex.
+    Calcula el área de un bloque dividiéndolo en triángulos.
 
-    The block is split by connecting the center node to all surrounding nodes,
-    forming triangles with consecutive pairs of surrounding nodes.
+    El bloque se divide conectando el nodo central con todos los nodos circundantes,
+    formando triángulos con pares consecutivos de nodos circundantes.
 
-    Parameters
+    Parámetros
     ----------
     center_idx : int
-        Global index of the center node
+        Índice global del nodo central
     block_nodes : list
-        List of node indices in the 3x3 block
+        Lista de índices de nodos en el bloque 3×3
     structural_coords : ndarray
-        Coordinates of all nodes
+        Coordenadas de todos los nodos
 
-    Returns
+    Retorna
     -------
     total_area : float
-        Total area of the block
+        Área total del bloque en m²
     """
-    # Get center node position
+    # Obtener posición del nodo central
     center_pos = structural_coords[center_idx]
 
-    # Get surrounding nodes in counterclockwise order from block_nodes
-    # Block nodes are ordered row-by-row, we need to reorder them counterclockwise
-    # Standard 3x3 block layout (row-by-row):
-    # [0, 1, 2]   --> corresponds to: [TL, T, TR]
-    # [3, 4, 5]   --> corresponds to: [L,  C, R ]
-    # [6, 7, 8]   --> corresponds to: [BL, B, BR]
+    # Obtener nodos circundantes en orden antihorario
+    # Los nodos del bloque están ordenados fila por fila, necesitamos reordenarlos
+    # Disposición estándar del bloque 3×3 (fila por fila):
+    # [0, 1, 2]   --> corresponde a: [SI, S, SD]  (Superior Izq, Superior, Superior Der)
+    # [3, 4, 5]   --> corresponde a: [I,  C, D ]  (Izquierda, Centro, Derecha)
+    # [6, 7, 8]   --> corresponde a: [II, I, ID]  (Inferior Izq, Inferior, Inferior Der)
 
-    # Create mapping from row-by-row to counterclockwise order around center
-    # Counterclockwise starting from bottom-left: BL, B, BR, R, TR, T, TL, L
+    # Crear mapeo de fila-por-fila a orden antihorario alrededor del centro
+    # Antihorario comenzando desde inferior-izquierda: II, I, ID, D, SD, S, SI, I
     if len(block_nodes) == 9:
-        # Full block with all 9 nodes
-        counterclockwise_order = [6, 7, 8, 5, 2, 1, 0, 3]  # Indices in block_nodes list
+        # Bloque completo con todos los 9 nodos
+        counterclockwise_order = [6, 7, 8, 5, 2, 1, 0, 3]
         surrounding_indices = [block_nodes[i] for i in counterclockwise_order]
     else:
-        # Boundary block - extract surrounding nodes (exclude center)
+        # Bloque de frontera - extraer nodos circundantes (excluir centro)
         surrounding_indices = [node for node in block_nodes if node != center_idx]
 
-        # Sort surrounding nodes counterclockwise based on their position
+        # Ordenar nodos circundantes antihorariamente según su posición
         surrounding_indices.sort(
-            key=lambda node_idx: _compute_angle_from_center(node_idx, center_pos, structural_coords)
+            key=lambda node_idx: _compute_angle_from_center(
+                node_idx, center_pos, structural_coords
+            )
         )
 
-    # Calculate total area by summing triangles
+    # Calcular área total sumando triángulos
     total_area = 0.0
     n = len(surrounding_indices)
 
     for i in range(n):
         p1 = center_pos
         p2 = structural_coords[surrounding_indices[i]]
-        p3 = structural_coords[surrounding_indices[(i + 1) % n]] #para conectarlo con el indice 0 y de toda la vuelta
+        p3 = structural_coords[surrounding_indices[(i + 1) % n]]  # Cierra el ciclo
 
         triangle_area = heron_triangle_area(p1, p2, p3)
         total_area += triangle_area
@@ -287,91 +339,10 @@ def compute_block_area(center_idx, block_nodes, structural_coords):
     return total_area
 
 
-# ---------------- Plot ----------------
-def plot_grid_with_blocks(structural_coords, center_nodes, nHeight, nWidth, x_exaggeration=5.0):
-    """
-    Plot the grid showing all nodes, center nodes, and blocks.
 
-    Parameters
-    ----------
-    structural_coords : ndarray
-        Coordinates of all nodes in the grid
-    center_nodes : list
-        List of global node indices for center nodes
-    nHeight : int
-        Number of nodes in eta direction (rows)
-    nWidth : int
-        Number of nodes in xi direction (columns)
-    x_exaggeration : float, optional
-        Factor to stretch the x-axis for visualization so the thin fin is visible.
-    """
-
-    # Exaggerate x for plotting only to make the fin thickness visible
-    scaled_coords = structural_coords.copy()
-    scaled_coords[:, 0] *= x_exaggeration
-
-    plt.figure(figsize=(10, 8))
-
-    # Plot all nodes first (in blue)
-    plt.scatter(scaled_coords[:, 0], scaled_coords[:, 1], s=20, marker='o',
-                color='blue', label='Regular nodes', zorder=3)
-
-    # Plot center nodes in a different color (red)
-    center_coords = scaled_coords[center_nodes]
-    plt.scatter(center_coords[:, 0], center_coords[:, 1], s=50, marker='o',
-                color='red', label='Center nodes', zorder=5)
-
-    # Draw rectangles around each block
-    for center_idx in center_nodes:
-        # For a 3x3 block, get the min/max row and column of the block
-        center_row = center_idx // nWidth
-        center_col = center_idx % nWidth
-
-        # Determine actual bounds of the block
-        min_row = max(0, center_row - 1)
-        max_row = min(nHeight - 1, center_row + 1)
-        min_col = max(0, center_col - 1)
-        max_col = min(nWidth - 1, center_col + 1)
-
-        # Get the four corners of the bounding box in counterclockwise order
-        corners_idx = [
-            min_row * nWidth + min_col,  # bottom-left
-            min_row * nWidth + max_col,  # bottom-right
-            max_row * nWidth + max_col,  # top-right
-            max_row * nWidth + min_col   # top-left
-        ]
-
-        # Get coordinates of corners
-        corners = [scaled_coords[idx] for idx in corners_idx]
-
-        # Draw polygon
-        polygon = Polygon(corners, fill=False, edgecolor='green',
-                        linewidth=1.5, linestyle='-', alpha=0.6)
-        plt.gca().add_patch(polygon)
-
-    # Add labels for all nodes
-    for i, (x, y) in enumerate(scaled_coords):
-        # Use different color for center nodes labels
-        if i in center_nodes:
-            plt.text(x + 1e-3, y + 1e-3, str(i), fontsize=7, color='red', fontweight='bold', zorder=6)
-        else:
-            plt.text(x + 1e-3, y + 1e-3, str(i), fontsize=7, color='blue', zorder=6)
-
-    # Add custom legend entry for blocks
-    block_patch = mpatches.Patch(facecolor='none', edgecolor='green', linewidth=1.5, label='Blocks')
-    handles, labels = plt.gca().get_legend_handles_labels()
-    handles.append(block_patch)
-    labels.append('Blocks')
-
-
-    plt.title('Structural Grid Points with Blocks')
-    plt.xlabel(f'Width (X) [exaggerated x{ x_exaggeration }]')
-    plt.ylabel('Height (Y)')
-    plt.legend(handles=handles, labels=labels)
-    plt.grid(True)
-    plt.axis('equal')
-    plt.show()
-
+# ============================================================================
+# CONSTRUCCIÓN DE LA MALLA 2D DE LA ALETA CON DATOS GEOMÉTRICOS FVM
+# ============================================================================
 
 def build_fin_grid_2d(fin_thickness=0.002,
                       fin_height=0.025,
@@ -379,34 +350,54 @@ def build_fin_grid_2d(fin_thickness=0.002,
                       tip_ratio=1.0,
                       round_factor=0.5):
     """
-    Builds the 2D fin grid and all FVM geometric data
-    for the given fin_thickness, fin_height and fin_length.
+    Construye la malla 2D de la aleta y todos los datos geométricos del FVM.
+
+    Parámetros
+    ----------
+    fin_thickness : float
+        Espesor de la base de la aleta [m]
+    fin_height : float
+        Altura de la aleta [m]
+    fin_length : float
+        Longitud de la aleta (profundidad en Z) [m]
+    tip_ratio : float
+        Proporción del ancho de la punta respecto a la base (1.0 = rectangular)
+    round_factor : float
+        Factor de redondeo de la punta (0.0 = aguda, 1.0 = redondeada)
+
+    Retorna
+    -------
+    tuple
+        (structural_coords, center_nodes, neighbours_dict, areas_dict,
+         volumes_dict, blocks, center_distances, face_lengths, face_areas,
+         boundary_areas)
     """
 
+    # ------------------------------------------------------------------------
+    # 1. DISCRETIZACIÓN EN COORDENADAS NATURALES
+    # ------------------------------------------------------------------------
+    nHeight = N_HEIGHT  # Número de nodos en dirección eta (debe ser impar)
+    nWidth = N_WIDTH    # Número de nodos en dirección xi (debe ser impar)
 
-    # -------- Discretization in natural coordinates --------
-    nHeight = N_HEIGHT  # Number of nodes in eta direction (should be odd for proper center nodes)
-    nWidth  = N_WIDTH   # Number of nodes in xi direction (should be odd for proper center nodes)
+    h = np.linspace(-1, 1, nHeight)  # Coordenada eta
+    w = np.linspace(-1, 1, nWidth)   # Coordenada xi
+    H, W = np.meshgrid(h, w)         # Malla: W→xi, H→eta
 
-
-    h = np.linspace(-1, 1, nHeight)  # eta
-    w = np.linspace(-1, 1, nWidth)   # xi
-    H, W = np.meshgrid(h, w)          # default 'xy': W->xi, H->eta
-
-    # (xi, eta) rows
+    # Matriz de coordenadas naturales (xi, eta)
     natural_coords = np.column_stack((W.ravel(), H.ravel()))
 
-    # -------- Control points for symmetric tapered fin --------
-    # Fin shape: flat base at bottom (Y=-25mm), tapered tip at top (Y=+25mm)
-    # Symmetric about X=0
-    # Base width: 50mm, Tip width: 30mm, Height: 50mm
-    # ---- Fin geometry (rectangular) ----
+    # ------------------------------------------------------------------------
+    # 2. PUNTOS DE CONTROL PARA LA GEOMETRÍA DE LA ALETA
+    # ------------------------------------------------------------------------
+    # La aleta es simétrica respecto a X=0 con:
+    #   - Base plana en Y=0
+    #   - Punta (potencialmente ahusada y redondeada) en Y=fin_height
 
     half_t_base = fin_thickness / 2.0
-    half_t_tip  = tip_ratio * half_t_base
+    half_t_tip = tip_ratio * half_t_base
 
     # Punta redondeada: las esquinas superiores bajan respecto al centro
-    # round_factor = 0 → punta plana/aguda (todas las esquinas a la misma altura)
+    # round_factor = 0 → punta aguda (todas las esquinas a la misma altura)
     # round_factor = 1 → punta redondeada (esquinas bajan 10% de la altura)
     tip_corner_drop = round_factor * fin_height * 0.1
     tip_corner_height = fin_height - tip_corner_drop
@@ -414,52 +405,60 @@ def build_fin_grid_2d(fin_thickness=0.002,
     # Ancho a mitad de altura (promedio lineal entre base y punta)
     half_t_mid = 0.5 * (half_t_base + half_t_tip)
 
-
+    # Definir los 9 puntos de control del elemento Q9
     ctrl = np.array([
         # Base (recta)
         [-half_t_base, 0.0],                # N1: base izquierda
-        [ half_t_base, 0.0],                # N2: base derecha
+        [half_t_base, 0.0],                 # N2: base derecha
 
         # Esquinas de la punta (bajan según round_factor para redondear)
-        [ half_t_tip,  tip_corner_height],  # N3: esquina superior derecha
-        [-half_t_tip,  tip_corner_height],  # N4: esquina superior izquierda
+        [half_t_tip, tip_corner_height],    # N3: esquina superior derecha
+        [-half_t_tip, tip_corner_height],   # N4: esquina superior izquierda
 
         # Puntos intermedios
-        [ 0.0,         0.0],                # N5: centro base
+        [0.0, 0.0],                         # N5: centro base
 
         # Mitad de altura
-        [ half_t_mid,  fin_height/2],       # N6: mitad derecha
-        [ 0.0,         fin_height],         # N7: centro punta (punto más alto)
-        [-half_t_mid,  fin_height/2],       # N8: mitad izquierda
-        [ 0.0,         fin_height/2],       # N9: centro medio
+        [half_t_mid, fin_height / 2],       # N6: mitad derecha
+        [0.0, fin_height],                  # N7: centro punta (punto más alto)
+        [-half_t_mid, fin_height / 2],      # N8: mitad izquierda
+        [0.0, fin_height / 2],              # N9: centro medio
     ])
 
 
 
 
-    # -------- Coordinate transformation --------
+    # ------------------------------------------------------------------------
+    # 3. TRANSFORMACIÓN DE COORDENADAS (NATURAL → FÍSICA)
+    # ------------------------------------------------------------------------
     structural_coords = q9_interpolate_points(ctrl, natural_coords)
 
+    # ------------------------------------------------------------------------
+    # 4. IDENTIFICAR NODOS CENTRALES Y CONSTRUIR BLOQUES
+    # ------------------------------------------------------------------------
     center_nodes, center_nodes_grid = get_center_nodes(nHeight, nWidth)
 
-    # Create dictionary mapping center nodes to their blocks
+    # Crear diccionario que mapea nodos centrales a sus bloques
     blocks = {}
     for center in center_nodes:
         blocks[center] = get_block_nodes(center, nWidth, nHeight)
 
-    # Build neighbor array for all center nodes
+    # Construir arreglo de vecinos para todos los nodos centrales
     n_centers = len(center_nodes)
     neighbours = np.empty((n_centers, 5), dtype=object)
 
     for i, center in enumerate(center_nodes):
-        neighbours[i, :] = get_center_neighbors_from_grid(center, center_nodes_grid, nWidth)
+        neighbours[i, :] = get_center_neighbors_from_grid(
+            center, center_nodes_grid, nWidth
+        )
 
-    # Create a dictionary for easy lookup: global_node_index -> neighbor list
-    # This allows you to quickly find neighbors by the global node index
+    # Crear diccionario para búsqueda rápida: índice_nodo → lista_vecinos
     center_node_to_idx = {node: i for i, node in enumerate(center_nodes)}
     neighbours_dict = {node: neighbours[i] for i, node in enumerate(center_nodes)}
 
-    # Compute areas for all center nodes
+    # ------------------------------------------------------------------------
+    # 5. CALCULAR ÁREAS 2D DE LOS VOLÚMENES DE CONTROL
+    # ------------------------------------------------------------------------
     areas = np.zeros(n_centers, dtype=float)
     areas_dict = {}
 
@@ -468,21 +467,19 @@ def build_fin_grid_2d(fin_thickness=0.002,
         areas[i] = compute_block_area(center, block, structural_coords)
         areas_dict[center] = areas[i]
 
-     #-------- Compute Volumes --------
-    # For 2D grid representing 3D object: Volume = Area × Thickness
-    # Heat sink base thickness: 1mm (0.001 m)
-    # ---- Compute the 3D volumes ----
-    # 2D grid = (thickness × height); extrude into page by fin_length
+    # ------------------------------------------------------------------------
+    # 6. CALCULAR VOLÚMENES 3D
+    # ------------------------------------------------------------------------
+    # Malla 2D = (espesor × altura); extruir en dirección Z por fin_length
+    # Volumen 3D = Área 2D × Longitud de extrusión
 
     volumes = areas * fin_length
-
     volumes_dict = {center_nodes[i]: volumes[i] for i in range(len(center_nodes))}
 
-
-    # -----------------------------------------------------------
-    # 1) CENTER-TO-CENTER DISTANCES d_ij
-    # -----------------------------------------------------------
-    center_distances = {}   # key: (i, j) using GLOBAL center node ids
+    # ------------------------------------------------------------------------
+    # 7. DISTANCIAS CENTRO A CENTRO d_ij
+    # ------------------------------------------------------------------------
+    center_distances = {}  # Clave: (i, j) usando IDs globales de nodos centrales
 
     for c_idx, c in enumerate(center_nodes):
         cx, cy = structural_coords[c]
@@ -493,31 +490,31 @@ def build_fin_grid_2d(fin_thickness=0.002,
             d = np.linalg.norm([nx - cx, ny - cy])
             center_distances[(c, neigh)] = d
 
+    # ------------------------------------------------------------------------
+    # 8. LONGITUDES Y ÁREAS DE CARAS
+    # ------------------------------------------------------------------------
+    # Cada volumen de control tiene un bloque (lista de nodos circundantes)
+    # Encontramos aristas compartidas entre bloques
 
-    # -----------------------------------------------------------
-    # 2) FACE LENGTHS AND FACE AREAS
-    # -----------------------------------------------------------
-    # Each control volume has a block (list of 8 surrounding node ids)
-    # We find shared edges between blocks.
-
-    face_lengths = {}   # 2D length of face between CVs (meters)
-    face_areas   = {}   # 3D face area = face_length * fin_length
+    face_lengths = {}  # Longitud 2D de la cara entre VCs [m]
+    face_areas = {}    # Área 3D de la cara = face_length × fin_length [m²]
 
     for c_idx, c in enumerate(center_nodes):
-        block_c = blocks[c]  # nodes surrounding CV c
-    
+        block_c = blocks[c]  # Nodos que rodean el VC c
+
         for neigh in neighbours_dict[c]:
             if neigh is None or neigh == c:
                 continue
-        
+
             block_n = blocks[neigh]
-        
-            # Find shared nodes between block polygons
+
+            # Encontrar nodos compartidos entre los polígonos de bloques
             shared = list(set(block_c).intersection(set(block_n)))
             L = 0.0
 
             if len(shared) >= 2:
-                # Choose the longest edge among the shared nodes (handles 3-node overlaps cleanly)
+                # Elegir la arista más larga entre nodos compartidos
+                # (maneja limpiamente superposiciones de 3 nodos)
                 max_len = 0.0
                 for i in range(len(shared)):
                     for j in range(i + 1, len(shared)):
@@ -527,46 +524,51 @@ def build_fin_grid_2d(fin_thickness=0.002,
                         if candidate > max_len:
                             max_len = candidate
                 L = max_len
-        
-            face_lengths[(c, neigh)] = L
-            face_areas[(c, neigh)]   = L * fin_length   # <- 3D face area
 
-    # -----------------------------------------------------------
-    # 3) BOUNDARY SURFACE AREAS (FOR CONVECTION)
-    # -----------------------------------------------------------
-    boundary_areas = {}  # exposed area for each boundary CV
+            face_lengths[(c, neigh)] = L
+            face_areas[(c, neigh)] = L * fin_length  # Área 3D de la cara
+
+    # ------------------------------------------------------------------------
+    # 9. ÁREAS SUPERFICIALES DE FRONTERA (PARA CONVECCIÓN)
+    # ------------------------------------------------------------------------
+    boundary_areas = {}  # Área expuesta para cada VC de frontera
 
     for c_idx, c in enumerate(center_nodes):
-        A_surf = 0.0   # accumulate surface area
+        A_surf = 0.0  # Acumular área superficial
 
-        # Add FRONT and BACK face areas (in Z direction)
-        # These faces are created when extruding the 2D geometry by fin_length
-        # Both front (Z=0) and back (Z=fin_length) are exposed to air
-        A_surf += 2 * areas_dict[c]  # front + back areas
+        # Agregar áreas de caras FRONTAL y POSTERIOR (en dirección Z)
+        # Estas caras se crean al extruir la geometría 2D por fin_length
+        # Tanto frontal (Z=0) como posterior (Z=fin_length) están expuestas al aire
+        A_surf += 2 * areas_dict[c]  # Áreas frontal + posterior
 
         for direction_idx, neigh in enumerate(neighbours_dict[c]):
             if neigh is None:
-                # boundary face: find the corresponding face length
+                # Cara de frontera: encontrar la longitud de cara correspondiente
                 block_c = blocks[c]
 
-                # Determine boundary edge by selecting nodes on the outermost coordinate
-                # direction_idx: 0=Center, 1=Left, 2=Right, 3=Up, 4=Down
-                # Left/Right (1,2): boundaries in X direction (axis 0)
-                # Up/Down (3,4): boundaries in Y direction (axis 1)
+                # Determinar arista de frontera seleccionando nodos en la coordenada
+                # más externa
+                # direction_idx: 0=Centro, 1=Izq, 2=Der, 3=Arriba, 4=Abajo
+                # Izq/Der (1,2): fronteras en dirección X (eje 0)
+                # Arriba/Abajo (3,4): fronteras en dirección Y (eje 1)
                 axis = 0 if direction_idx in (1, 2) else 1
                 coords_block = structural_coords[block_c][:, axis]
 
-                # Left (1) or Down (4) → minimum edge
-                # Right (2) or Up (3) → maximum edge
+                # Izquierda (1) o Abajo (4) → arista mínima
+                # Derecha (2) o Arriba (3) → arista máxima
                 if direction_idx in (1, 4):
                     edge_coord = np.min(coords_block)
                 else:
                     edge_coord = np.max(coords_block)
 
                 tol = 1e-12 + 1e-6 * abs(edge_coord)
-                edge_nodes = [n for n in block_c if abs(structural_coords[n][axis] - edge_coord) <= tol]
+                edge_nodes = [
+                    n for n in block_c
+                    if abs(structural_coords[n][axis] - edge_coord) <= tol
+                ]
 
-                # Pick the longest segment among edge nodes (covers >2 collinear nodes)
+                # Elegir el segmento más largo entre nodos de arista
+                # (cubre >2 nodos colineales)
                 edge_len = 0.0
                 if len(edge_nodes) >= 2:
                     for i in range(len(edge_nodes)):
@@ -575,10 +577,14 @@ def build_fin_grid_2d(fin_thickness=0.002,
                             p2 = structural_coords[edge_nodes[j]]
                             edge_len = max(edge_len, np.linalg.norm(p2 - p1))
 
-                # Convert to 3D area: edge x fin_length
+                # Convertir a área 3D: arista × fin_length
                 A_surf += edge_len * fin_length
+
         boundary_areas[c] = A_surf
 
+    # ------------------------------------------------------------------------
+    # 10. RETORNAR TODOS LOS DATOS GEOMÉTRICOS
+    # ------------------------------------------------------------------------
     return (structural_coords,
             center_nodes,
             neighbours_dict,

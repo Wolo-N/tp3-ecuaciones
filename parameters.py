@@ -14,7 +14,8 @@ T_BASE = 90     # Temperatura de la base (CPU) [°C]
 # Parámetros del problema
 Q_REQUIRED = 500    # Calor total a disipar [W]
 BASE_SIZE = 0.05    # Tamaño de la base del disipador [m] (50 mm)
+GAP = 0.001         # Espacio entre aletas consecutivas [m] (1 mm)
 
 # Discretización de la malla FVM
-N_HEIGHT = 41   # Número de nodos en dirección Y (altura) - debe ser impar
-N_WIDTH = 41    # Número de nodos en dirección X (espesor) - debe ser impar
+N_HEIGHT = 11   # Número de nodos en dirección Y (altura) - debe ser impar
+N_WIDTH = 11    # Número de nodos en dirección X (espesor) - debe ser impar

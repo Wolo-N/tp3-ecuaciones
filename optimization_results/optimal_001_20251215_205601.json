@@ -1,0 +1,12 @@
+{
+  "thickness": 0.0001,
+  "height": 0.015068965517241378,
+  "tip_ratio": 1,
+  "round_factor": 1,
+  "m_fin": 0.0001976230804547747,
+  "Q_fin": 11.31524497757227,
+  "n_required": 45,
+  "n_max": 45,
+  "feasible": true,
+  "m_total": 0.00889303862046486
+}
